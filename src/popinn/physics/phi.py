@@ -32,8 +32,12 @@ def g_equilibrium(x: jnp.ndarray, gamma: float,
         g (jnp.ndarray): a new scaled phi array
     """
 
-    g_neutral = 1. - x
-    g_selected = jnp.expm1(-2. * gamma * (1. - x)) / jnp.expm1(-2. * gamma)
+    # g_neutral = 1. - x
+    # g_selected = jnp.expm1(-2. * gamma * (1. - x)) / jnp.expm1(-2. * gamma)
 
-    return theta * nu * jnp.where(jnp.less(jnp.abs(gamma), 1e-8), g_neutral, g_selected)
+    # return theta * nu * jnp.where(jnp.less(jnp.abs(gamma), 1e-8), g_neutral, g_selected)
+
+
+    return 1. - x
+
 

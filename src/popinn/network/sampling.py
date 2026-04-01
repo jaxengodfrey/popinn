@@ -13,8 +13,7 @@ def xgrid(pts: int, crwd: float = 8.0) -> jnp.ndarray:
     return grid
 
 
-def sample_collocation(key, n_interior: int, n_bc: int, n_ic: int,
-                       t_max: float):
+def sample_collocation(key, n_interior: int, t_max: float, uniform = False, ic_bc_shape = None):
     """Sample collocation points for one training batch.
     
     Following Brevi et al.: sample from normal distributions centered
@@ -40,21 +39,46 @@ def sample_collocation(key, n_interior: int, n_bc: int, n_ic: int,
     x_mesh, t_mesh = jnp.meshgrid(x_grid, t_grid)
     xt_grid = jnp.stack([x_mesh.flatten(), t_mesh.flatten()])
 
-    new_x = xt_grid[0] + jr.normal(k1, shape = n_interior*n_interior) * dx / 5.
-    new_t = xt_grid[1] + jr.normal(k2, shape=n_interior*n_interior) * dt / 5.
+    if uniform:
+        colloc_xt = jnp.expand_dims(xt_grid, axis = -1)
+        return xt_grid, x_grid, t_grid
+    
+    else:
 
-    x_pts = jnp.clip(new_x, *x_interior_span)
-    t_pts = jnp.clip(new_t, *t_interior_span)
+        new_x = xt_grid[0] + jr.normal(k1, shape = n_interior*n_interior) * dx / 5.
+        new_t = xt_grid[1] + jr.normal(k2, shape=n_interior*n_interior) * dt / 5.
 
-    colloc_xt = jnp.stack([x_pts, t_pts])
+        x_pts = jnp.clip(new_x, *x_interior_span)
+        t_pts = jnp.clip(new_t, *t_interior_span)
 
-    # IC points: t=0, random x
-    x_ic = jr.uniform(k3, shape=(n_ic,), minval=x_interior_span[0], maxval=x_interior_span[1])
+        colloc_xt = jnp.expand_dims(jnp.stack([x_pts, t_pts]), axis = -1) #add axis for gamma parameter so that vmapped residuals work
 
-    # BC points: random t for x=0 and x=1
-    t_bc = jr.uniform(k4, shape=(n_bc,), minval=t_interior_span[0], maxval=t_interior_span[1])
+        # IC points: t=0, random x
+        if ic_bc_shape is None:
+            ic_bc_shape = (n_interior,1)
 
-    return colloc_xt, x_ic, t_bc
+        x_ic = jr.uniform(k3, shape=ic_bc_shape, minval=x_interior_span[0], maxval=x_interior_span[1])
+
+        # BC points: random t for x=0 and x=1
+        t_bc = jr.uniform(k4, shape=ic_bc_shape, minval=t_interior_span[0], maxval=t_interior_span[1])
+
+        return colloc_xt, x_ic, t_bc
+    
+
+def sample_collocation_and_param(key, param_range: tuple, n_param_vals: int, n_xt_grid: int, t_max: float, sample_num = 1000, uniform = False):
+
+    colloc_xt, x_ic, t_bc = sample_collocation(key, n_xt_grid, t_max, uniform = uniform, ic_bc_shape = (n_xt_grid, n_param_vals))
+    k1, _ = jr.split(key, 2)
+
+    param = jnp.linspace(*param_range, n_param_vals)
+
+    idxs = jr.choice(k1, jnp.arange(colloc_xt.shape[1]), shape = (sample_num,n_param_vals))
+    colloc_xt_samples = jnp.squeeze(colloc_xt[:,idxs])
+
+    return colloc_xt_samples, x_ic, t_bc, param
+
+
+
 
 # def sample_collocation(key, n_interior: int, n_bc: int, n_ic: int,
 #                        t_max: float):

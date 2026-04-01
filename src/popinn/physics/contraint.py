@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from .phi import g_equilibrium
 import jax
 if TYPE_CHECKING:
-    from ..network.model import PINN
+    from ..network.models import PINN
 
 # def hard(model: PINN, x: jnp.ndarray, t: jnp.ndarray, gamma: float, theta: float = 1., nu: float = 1.) -> jnp.ndarray:
 #     """Compute g(x,t) with hard-coded IC and right BC.

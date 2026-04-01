@@ -4,6 +4,7 @@ import jax.numpy as jnp
 from typing import NamedTuple
 from .phi import g_equilibrium
 from .pde import pde_residual
+from ..network.models import eval_partial_model
 
 
 class LossWeights(NamedTuple):
@@ -13,70 +14,183 @@ class LossWeights(NamedTuple):
     bc_left: float = 10.0
     bc_right: float = 10.0
     non_negative: float = 0.1
+    sol: float = 1.0
+
+def mapped_pde_residual(model, colloc_xt, gamma_evol, nu = 1.):
+    def single_residual(xt, gamma):
+        return pde_residual(model, xt[0], xt[1], gamma, nu = nu)
+    map_sample = jax.vmap(single_residual, in_axes = (1, None))
+    map_gamma = jax.vmap(map_sample, in_axes = (2, 0))
+    return map_gamma(colloc_xt, gamma_evol)
+
+def pde_loss(model, *args, **kwargs):
+    return jnp.mean(mapped_pde_residual(model, *args, **kwargs)**2.)
 
 
-def loss_pde(model, colloc_xt, gamma_evol, nu = 1.):
-    """Mean squared PDE residual over collocation points."""
-    def single_residual(xt):
-        return pde_residual(model, xt[0], xt[1], gamma_evol, nu = nu)
-
-    residuals = jax.vmap(single_residual, in_axes = (1))(colloc_xt)
-    return jnp.mean(residuals ** 2)
-
-
-def loss_ic(model, x_ic, gamma_init: float, theta = 1., nu = 1.):
+def mapped_ic_residual(model, x_ic, gamma_evol, gamma_init: float, theta = 1., nu = 1.):
     """Mean squared error of IC: g(x, 0) = g_eq(x).
-    Only needed for soft constraint mode.
     """
-    def single_ic(x):
-        g_pred = model(x, jnp.array(0.0))      
+    def single_ic(x, gamma):
+        g_xt = eval_partial_model(model, gamma)
+        g_pred = g_xt(x, jnp.array(0.0))      
         g_true = g_equilibrium(x, gamma_init, theta = theta, nu = nu)
-        return (g_pred - g_true) ** 2
+        return (g_pred - g_true)
+    
+    map_sample = jax.vmap(single_ic, in_axes = (0, None))
+    map_gamma = jax.vmap(map_sample, in_axes = (1, 0))
 
-    return jnp.mean(jax.vmap(single_ic)(x_ic))
+    return map_gamma(x_ic, gamma_evol)
+
+def ic_loss(model, *args, **kwargs):
+    return jnp.mean(mapped_ic_residual(model, *args, **kwargs)**2.)
 
 
-def loss_bc(model, t_bc, theta = 1., nu = 1.):
+def mapped_bc_residual(model, t_bc, gamma_evol, theta = 1., nu = 1.):
     """Mean squared error of BCs.
     
     Left BC: g(0,t) = theta  
     Right BC: g(1,t) = 0     
     """
-    def single_bc_left(t):
-        g_left = model(jnp.array(0.), t)
-        return (g_left - theta * nu) ** 2.
 
-    def single_bc_right(t):
-        g_right = model(jnp.array(1.0), t)
-        return g_right ** 2.
+    def map_bc(bc):
+        map_sample = jax.vmap(bc, in_axes = (0, None))
+        map_gamma = jax.vmap(map_sample, in_axes = (1, 0))
+        return map_gamma
 
-    return jnp.mean(jax.vmap(single_bc_left)(t_bc)), jnp.mean(jax.vmap(single_bc_right)(t_bc))
+    def single_bc_left(t, gamma):
+        g_xt = eval_partial_model(model, gamma)
+        g_left = g_xt(jnp.array(0.), t)
+        return g_left - theta * nu
+
+    def single_bc_right(t, gamma):
+        g_xt = eval_partial_model(model, gamma)
+        g_right = g_xt(jnp.array(1.0), t)
+        return g_right
+
+    return map_bc(single_bc_left)(t_bc, gamma_evol), map_bc(single_bc_right)(t_bc, gamma_evol)
+
+def bc_loss(model, *args, **kwargs):
+    left_bc_res, right_bc_res = mapped_bc_residual(model, *args, **kwargs)
+    return jnp.mean(left_bc_res**2.), jnp.mean(jnp.abs(right_bc_res)**2.)
 
 
-def loss_non_negative(model, colloc_xt):
+
+def mapped_non_negative_residual(model, colloc_xt, gamma_evol):
     """Soft penalty for negative g values (inductive bias: g >= 0)."""
-    def single_nn(xt):
-        g_val = model(xt[0], xt[1])
-        return jnp.minimum(g_val, 0.0) ** 2
+    def single_nn(xt, gamma):
+        g_xt = eval_partial_model(model, gamma)
+        g_val = g_xt(xt[0], xt[1])
+        return jnp.minimum(g_val, 0.0)
+    
+    map_sample = jax.vmap(single_nn, in_axes = (1, None))
+    map_gamma = jax.vmap(map_sample, in_axes = (2, 0))
 
-    return jnp.mean(jax.vmap(single_nn, in_axes = (1))(colloc_xt))
+    return map_gamma(colloc_xt, gamma_evol)
+
+def non_negative_loss(model, *args, **kwargs):
+    return jnp.mean(mapped_non_negative_residual(model, *args, **kwargs)**2.)
+
+
+def mapped_solution_residual(model, x_tf, gamma_evol, true_sol, t_max):
+    """Soft penalty for negative g values (inductive bias: g >= 0)."""
+    def single(x, gamma, sol):
+        g_xt = eval_partial_model(model, gamma)
+        g_val = g_xt(x, t_max)
+        return (jnp.log(sol + 1e-8) - jnp.log(g_val + 1e-8))
+    
+    map_sample = jax.vmap(single, in_axes = (0, None, 0))
+    map_gamma = jax.vmap(map_sample, in_axes = (None, 0, 0))
+
+    return map_gamma(x_tf, gamma_evol, true_sol)
+
+def solution_loss(model, *args, **kwargs):
+    return jnp.mean(mapped_solution_residual(model, *args, **kwargs) ** 2.)
+
 
 
 def total_loss(model, colloc_xt, x_ic, t_bc,
                gamma_evol, gamma_init, weights: LossWeights, theta = 1., nu = 1.):
     """Compute total weighted loss."""
 
-    l_pde = loss_pde(model, colloc_xt, gamma_evol, nu = nu)
-    l_bc_left, l_bc_right = loss_bc(model, t_bc, theta = theta, nu = nu)
-    l_ic = loss_ic(model, x_ic, gamma_init, theta = theta, nu = theta) 
-    l_nn = loss_non_negative(model, colloc_xt)
+    l_pde = pde_loss(model, colloc_xt, gamma_evol, nu = nu)
+    l_bc_left, l_bc_right = bc_loss(model, t_bc, gamma_evol, theta = theta, nu = nu)
+    l_ic = ic_loss(model, x_ic, gamma_evol, gamma_init, theta = theta, nu = theta) 
+    l_nn = non_negative_loss(model, colloc_xt, gamma_evol)
+    # l_sol = solution_loss(model, x_sols, gamma_evol, sols, t_max)
 
     total = (weights.pde * l_pde
              + weights.ic * l_ic
              + weights.bc_left * l_bc_left
              + weights.bc_right * l_bc_right
              + weights.non_negative * l_nn)
+            #  + weights.sol * l_sol)
 
     return total, {"pde": l_pde, "ic": l_ic,
                    "bc_left": l_bc_left, "bc_right": l_bc_right,
-                   "non_neg": l_nn}
+                   "non_neg": l_nn}#, 'sol': l_sol}
+
+# def loss_pde(model, colloc_xt, gamma_evol, nu = 1.):
+#     """Mean squared PDE residual over collocation points."""
+#     def single_residual(xt):
+#         return pde_residual(model, xt[0], xt[1], gamma_evol, nu = nu)
+
+#     residuals = jax.vmap(single_residual, in_axes = (1))(colloc_xt)
+#     return jnp.mean(residuals ** 2)
+
+
+# def loss_ic(model, x_ic, gamma_init: float, theta = 1., nu = 1.):
+#     """Mean squared error of IC: g(x, 0) = g_eq(x).
+#     Only needed for soft constraint mode.
+#     """
+#     def single_ic(x):
+#         g_pred = model(x, jnp.array(0.0))      
+#         g_true = g_equilibrium(x, gamma_init, theta = theta, nu = nu)
+#         return (g_pred - g_true) ** 2
+
+#     return jnp.mean(jax.vmap(single_ic)(x_ic))
+
+
+# def loss_bc(model, t_bc, theta = 1., nu = 1.):
+#     """Mean squared error of BCs.
+    
+#     Left BC: g(0,t) = theta  
+#     Right BC: g(1,t) = 0     
+#     """
+#     def single_bc_left(t):
+#         g_left = model(jnp.array(0.), t)
+#         return (g_left - theta * nu) ** 2.
+
+#     def single_bc_right(t):
+#         g_right = model(jnp.array(1.0), t)
+#         return g_right ** 2.
+
+#     return jnp.mean(jax.vmap(single_bc_left)(t_bc)), jnp.mean(jax.vmap(single_bc_right)(t_bc))
+
+
+# def loss_non_negative(model, colloc_xt):
+#     """Soft penalty for negative g values (inductive bias: g >= 0)."""
+#     def single_nn(xt):
+#         g_val = model(xt[0], xt[1])
+#         return jnp.minimum(g_val, 0.0) ** 2
+
+#     return jnp.mean(jax.vmap(single_nn, in_axes = (1))(colloc_xt))
+
+
+# def total_loss(model, colloc_xt, x_ic, t_bc,
+#                gamma_evol, gamma_init, weights: LossWeights, theta = 1., nu = 1.):
+#     """Compute total weighted loss."""
+
+#     l_pde = loss_pde(model, colloc_xt, gamma_evol, nu = nu)
+#     l_bc_left, l_bc_right = loss_bc(model, t_bc, theta = theta, nu = nu)
+#     l_ic = loss_ic(model, x_ic, gamma_init, theta = theta, nu = theta) 
+#     l_nn = loss_non_negative(model, colloc_xt)
+
+#     total = (weights.pde * l_pde
+#              + weights.ic * l_ic
+#              + weights.bc_left * l_bc_left
+#              + weights.bc_right * l_bc_right
+#              + weights.non_negative * l_nn)
+
+#     return total, {"pde": l_pde, "ic": l_ic,
+#                    "bc_left": l_bc_left, "bc_right": l_bc_right,
+#                    "non_neg": l_nn}

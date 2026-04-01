@@ -4,7 +4,7 @@ import optax
 import matplotlib.pyplot as plt
 
 from ..physics.loss import LossWeights, total_loss
-from .model import PINN
+from .models import PINN
 from .sampling import sample_collocation
 import jax
 
@@ -117,9 +117,7 @@ def train_adam_lbfgs(
     num_epochs_lbfgs: int = 0,
     lr: float = 1e-3,
     lr_schedule: str = "cosine",  # "constant" or "cosine"
-    n_interior: int = 1024,
-    n_bc: int = 64,
-    n_ic: int = 128,
+    n_interior: int = 100,
     # Constraint mode
     use_hard: bool = True,
     weights: LossWeights = None,
@@ -198,7 +196,7 @@ def train_adam_lbfgs(
         for epoch in range(num_epochs_adam):
             key, sample_key = jr.split(key)
             colloc_xt, x_ic, t_bc = sample_collocation(
-                sample_key, n_interior, n_bc, n_ic, t_max
+                sample_key, n_interior, t_max
             )
             model, opt_state, loss_val, loss_dict = adam_step(
                 model, opt_state, colloc_xt, x_ic, t_bc
@@ -214,7 +212,7 @@ def train_adam_lbfgs(
         # Use a fixed set of collocation points for deterministic gradients
         key, sample_key = jr.split(key)
         colloc_xt_fixed, x_ic_fixed, t_bc_fixed = sample_collocation(
-            sample_key, n_interior, n_bc, n_ic, t_max
+            sample_key, n_interior, t_max, uniform = True
         )
 
         # Split model into trainable params and static structure

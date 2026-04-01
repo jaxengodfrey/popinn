@@ -1,5 +1,5 @@
 import equinox as eqx
-from ..network.model import PINN
+from ..network.models import PINN
 import jax.random as jr
 
 def save_model(model, path: str, metadata: dict = None):
