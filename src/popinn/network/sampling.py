@@ -1,5 +1,11 @@
+from __future__ import annotations
+
+from typing import Callable
+
 import jax.numpy as jnp
 import jax.random as jr
+
+from ..config import Batch, PhysicsConfig, SamplingConfig
 
 def xgrid(pts: int, crwd: float = 8.0) -> jnp.ndarray:
     """Non-uniform grid on [0, 1] with points crowded near the boundaries.
@@ -13,7 +19,7 @@ def xgrid(pts: int, crwd: float = 8.0) -> jnp.ndarray:
     return grid
 
 
-def sample_collocation(key, n_interior: int, t_max: float, uniform = False, ic_bc_shape = None):
+def _sample_collocation(key, n_interior: int, t_max: float, uniform = False, ic_bc_shape = None):
     """Sample collocation points for one training batch.
     
     Following Brevi et al.: sample from normal distributions centered
@@ -65,9 +71,9 @@ def sample_collocation(key, n_interior: int, t_max: float, uniform = False, ic_b
         return colloc_xt, x_ic, t_bc
     
 
-def sample_collocation_and_param(key, param_range: tuple, n_param_vals: int, n_xt_grid: int, t_max: float, sample_num = 1000, uniform = False):
+def _sample_collocation_and_param(key, param_range: tuple, n_param_vals: int, n_xt_grid: int, t_max: float, sample_num = 1000, uniform = False):
 
-    colloc_xt, x_ic, t_bc = sample_collocation(key, n_xt_grid, t_max, uniform = uniform, ic_bc_shape = (n_xt_grid, n_param_vals))
+    colloc_xt, x_ic, t_bc = _sample_collocation(key, n_xt_grid, t_max, uniform = uniform, ic_bc_shape = (n_xt_grid, n_param_vals))
     k1, _ = jr.split(key, 2)
 
     param = jnp.linspace(*param_range, n_param_vals)
@@ -78,45 +84,71 @@ def sample_collocation_and_param(key, param_range: tuple, n_param_vals: int, n_x
     return colloc_xt_samples, x_ic, t_bc, param
 
 
+# ---------------------------------------------------------------------------
+# sampler factories
+# ---------------------------------------------------------------------------
+
+def make_pinn_sampler(
+    sampling_cfg: SamplingConfig,
+    physics_cfg: PhysicsConfig,
+) -> Callable:
+    """Build a sampler for a standard single-gamma PINN.
+
+    The returned ``sample_fn`` wraps gamma as a length-1 array so that the
+    batch layout (with a trailing gamma axis) is identical to the P2INN case.
+
+    Args:
+        sampling_cfg: Controls grid size and uniformity.
+        physics_cfg:  Provides ``gamma_evol`` and ``t_max``.
+
+    Returns:
+        ``sample_fn(key) -> Batch``
+    """
+    gamma_evol = physics_cfg.gamma_evol
+    t_max = physics_cfg.t_max
+    n = sampling_cfg.n_interior
+    uniform = sampling_cfg.uniform
+
+    def sample_fn(key):
+        colloc_xt, x_ic, t_bc = _sample_collocation(
+            key, n, t_max, uniform=uniform
+        )
+        return Batch(colloc_xt=colloc_xt, x_ic=x_ic, t_bc=t_bc,
+                     extras={"gamma": gamma_evol})
+
+    return sample_fn
 
 
-# def sample_collocation(key, n_interior: int, n_bc: int, n_ic: int,
-#                        t_max: float):
-#     """Sample collocation points for one training batch.
-    
-#     Following Brevi et al.: sample from normal distributions centered
-#     on a regular mesh to span the domain while adding randomness.
-    
-#     Returns:
-#         colloc_xt: (n_interior, 2) interior points [x, t]
-#         x_ic: (n_ic,) x-values for IC evaluation
-#         t_bc: (n_bc,) t-values for BC evaluation
-#     """
-#     k1, k2, k3, k4, k5 = jr.split(key, 5)
+def make_p2inn_sampler(
+    sampling_cfg: SamplingConfig,
+    physics_cfg: PhysicsConfig,
+) -> Callable:
+    """Build a sampler for a parametrized P2INN that trains over a gamma range.
 
-#     # Interior collocation points in (0,1) x (0, t_max)
-#     # Mesh centers
-#     x_mesh = jnp.linspace(0.05, 0.95, int(jnp.sqrt(n_interior)))
-#     t_mesh = jnp.linspace(0.01, t_max * 0.99, int(jnp.sqrt(n_interior)))
-#     x_grid, t_grid = jnp.meshgrid(x_mesh, t_mesh)
-#     x_centers = x_grid.flatten()[:n_interior]
-#     t_centers = t_grid.flatten()[:n_interior]
+    Each call to ``sample_fn`` draws a fresh set of collocation points and
+    samples gamma values uniformly from ``gamma_range``.
 
-#     # Add noise (Brevi et al. strategy)
-#     dx = x_mesh[1] - x_mesh[0] if len(x_mesh) > 1 else 0.1
-#     dt = t_mesh[1] - t_mesh[0] if len(t_mesh) > 1 else 0.01
-#     x_pts = x_centers + jr.normal(k1, shape=x_centers.shape) * dx * 0.2
-#     t_pts = t_centers + jr.normal(k2, shape=t_centers.shape) * dt * 0.2
+    Args:
+        sampling_cfg: Controls grid size and uniformity.
+        physics_cfg:  Provides ``t_max``.
+        gamma_range:  ``(gamma_min, gamma_max)`` interval.
+        n_gamma:      Number of gamma values per batch.
+        sample_num:   Interior collocation points per gamma value.
 
-#     # Clip to domain
-#     x_pts = jnp.clip(x_pts, 1e-4, 1.0 - 1e-4)
-#     t_pts = jnp.clip(t_pts, 1e-6, t_max)
-#     colloc_xt = jnp.stack([x_pts, t_pts], axis=-1)
+    Returns:
+        ``sample_fn(key) -> Batch``
+    """
+    t_max = physics_cfg.t_max
+    n = sampling_cfg.n_interior
+    uniform = sampling_cfg.uniform
+    n_batch = sampling_cfg.n_batch
 
-#     # IC points: t=0, random x
-#     x_ic = jr.uniform(k3, shape=(n_ic,), minval=1e-4, maxval=1.0 - 1e-4)
+    def sample_fn(key):
+        colloc_xt, x_ic, t_bc, gamma = _sample_collocation_and_param(
+            key, physics_cfg.gamma_range, physics_cfg.n_gamma, n, t_max,
+            sample_num=n_batch, uniform=uniform
+        )
+        return Batch(colloc_xt=colloc_xt, x_ic=x_ic, t_bc=t_bc,
+                     extras={"gamma": gamma})
 
-#     # BC points: random t for x=0 and x=1
-#     t_bc = jr.uniform(k4, shape=(n_bc,), minval=1e-6, maxval=t_max)
-
-#     return colloc_xt, x_ic, t_bc
+    return sample_fn
