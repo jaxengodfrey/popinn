@@ -19,7 +19,7 @@ def xgrid(pts: int, crwd: float = 8.0) -> jnp.ndarray:
     return grid
 
 
-def _sample_collocation(key, n_interior: int, t_max: float, uniform = False, ic_bc_shape = None):
+def _sample_collocation(key, n_interior: int, t_max: float, uniform = False, ic_bc_shape = None, x_crowd = 8.0):
     """Sample collocation points for one training batch.
     
     Following Brevi et al.: sample from normal distributions centered
@@ -36,7 +36,7 @@ def _sample_collocation(key, n_interior: int, t_max: float, uniform = False, ic_
     t_interior_span = (1e-5,  t_max - 1e-5)
 
     # x_grid = jnp.linspace(*x_interior_span, n_interior)
-    x_grid = xgrid(n_interior + 2)[1:-1]
+    x_grid = xgrid(n_interior + 2, crwd = x_crowd)[1:-1]
     x_interior_span = (x_grid[0], x_grid[-1])
     t_grid = jnp.linspace(*t_interior_span, n_interior)
     dx = x_grid[1] - x_grid[0]
@@ -47,7 +47,9 @@ def _sample_collocation(key, n_interior: int, t_max: float, uniform = False, ic_
 
     if uniform:
         colloc_xt = jnp.expand_dims(xt_grid, axis = -1)
-        return xt_grid, x_grid, t_grid
+        x_ic = jr.uniform(k3, shape=ic_bc_shape, minval=x_interior_span[0], maxval=x_interior_span[1])
+        t_bc = jr.uniform(k4, shape=ic_bc_shape, minval=t_interior_span[0], maxval=t_interior_span[1])
+        return colloc_xt, x_ic, t_bc
     
     else:
 
@@ -71,9 +73,9 @@ def _sample_collocation(key, n_interior: int, t_max: float, uniform = False, ic_
         return colloc_xt, x_ic, t_bc
     
 
-def _sample_collocation_and_param(key, param_range: tuple, n_param_vals: int, n_xt_grid: int, t_max: float, sample_num = 1000, uniform = False):
+def _sample_collocation_and_param(key, param_range: tuple, n_param_vals: int, n_xt_grid: int, t_max: float, sample_num = 1000, uniform = False, x_crowd = 8.):
 
-    colloc_xt, x_ic, t_bc = _sample_collocation(key, n_xt_grid, t_max, uniform = uniform, ic_bc_shape = (n_xt_grid, n_param_vals))
+    colloc_xt, x_ic, t_bc = _sample_collocation(key, n_xt_grid, t_max, uniform = uniform, ic_bc_shape = (n_xt_grid, n_param_vals), x_crowd = x_crowd)
     k1, _ = jr.split(key, 2)
 
     param = jnp.linspace(*param_range, n_param_vals)
@@ -142,11 +144,12 @@ def make_p2inn_sampler(
     n = sampling_cfg.n_interior
     uniform = sampling_cfg.uniform
     n_batch = sampling_cfg.n_batch
+    x_crowd = sampling_cfg.x_crowd
 
     def sample_fn(key):
         colloc_xt, x_ic, t_bc, gamma = _sample_collocation_and_param(
             key, physics_cfg.gamma_range, physics_cfg.n_gamma, n, t_max,
-            sample_num=n_batch, uniform=uniform
+            sample_num=n_batch, uniform=uniform, x_crowd = x_crowd
         )
         return Batch(colloc_xt=colloc_xt, x_ic=x_ic, t_bc=t_bc,
                      extras={"gamma": gamma})

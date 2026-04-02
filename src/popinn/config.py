@@ -74,9 +74,11 @@ class SamplingConfig:
         n_interior: Grid points per axis; total interior pts = n_interior².
         uniform:    If True, use a uniform grid without noise (used for L-BFGS).
     """
-    n_interior: int = 50
+    n_interior: int = 100
+    x_crowd: float = 1.
     uniform: bool = False
     n_batch: int = 1000
+
 
 
 @dataclass
