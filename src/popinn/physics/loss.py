@@ -164,7 +164,7 @@ def make_loss(
         pde_residual_fn: PDE residual function with signature
                          ``(model_fn, x, t, gamma, nu) -> scalar``.
                          Defaults to the built-in ``log_pde_residual``.
-        pde_metric:      Aggregation metric applied to PDE residuals.  Defaults to ``mae``.
+        pde_metric:      Aggregation metric applied to PDE residuals.  Defaults to ``mse``.
         ic_metric:       Aggregation metric applied to IC residuals.   Defaults to ``mse``.
         bc_metric:       Aggregation metric applied to BC residuals.   Defaults to ``mse``.
 
