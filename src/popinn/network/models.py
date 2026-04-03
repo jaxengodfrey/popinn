@@ -102,7 +102,7 @@ class ManifoldNetwork(eqx.Module):
         h = h_concat
         for layer in self.layers[:-1]:
             h = jnp.tanh(layer(h))
-        return self.layers[-1](h).squeeze()
+        return jax.nn.softplus(self.layers[-1](h).squeeze())
 
 
 class P2INN(eqx.Module):
