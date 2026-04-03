@@ -117,14 +117,12 @@ def non_negative_loss(model, metric, *args, **kwargs):
 
 # ---------------------------------------------------------------------------
 # True solution at t_f residual and loss
-# NOT CURRENTLY IMPLEMENTED
 
 def _mapped_solution_residual(model, x_tf, gamma_evol, true_sol, t_max):
-    """Soft penalty for negative g values (inductive bias: g >= 0)."""
     def single(x, gamma, sol):
         g_xt = eval_partial_model(model, gamma)
         g_val = g_xt(x, t_max)
-        return (jnp.log(sol + 1e-8) - jnp.log(g_val + 1e-8))
+        return (g_val - sol)
     
     map_sample = jax.vmap(single, in_axes = (0, None, 0))
     map_gamma = jax.vmap(map_sample, in_axes = (None, 0, 0))
@@ -133,6 +131,7 @@ def _mapped_solution_residual(model, x_tf, gamma_evol, true_sol, t_max):
 
 def solution_loss(model, metric, *args, **kwargs):
     return metric(_mapped_solution_residual(model, *args, **kwargs))
+
 
 
 
@@ -147,6 +146,7 @@ def make_loss(
     ic_metric: Callable = mse,
     bc_metric: Callable = mse,
     nn_metric: Callable = mse,
+    include_sol: bool = False
 ) -> Callable:
     """Build a loss function for the population genetics PINN.
 
@@ -189,21 +189,46 @@ def make_loss(
 
         l_nn = non_negative_loss(model, nn_metric, batch.colloc_xt, gamma_evol)
 
-        total = (
-            weights.pde * l_pde
-            + weights.ic * l_ic
-            + weights.bc_left * l_bc_left
-            + weights.bc_right * l_bc_right
-            + weights.non_negative * l_nn
-        )
+        if not include_sol:
 
-        loss_dict = {
-            "pde": l_pde,
-            "ic": l_ic,
-            "bc_left": l_bc_left,
-            "bc_right": l_bc_right,
-            "non_neg": l_nn,
-        }
-        return total, loss_dict
+            total = (
+                weights.pde * l_pde
+                + weights.ic * l_ic
+                + weights.bc_left * l_bc_left
+                + weights.bc_right * l_bc_right
+                + weights.non_negative * l_nn
+            )
+
+            loss_dict = {
+                "pde": l_pde,
+                "ic": l_ic,
+                "bc_left": l_bc_left,
+                "bc_right": l_bc_right,
+                "non_neg": l_nn,
+            }
+            return total, loss_dict
+        
+        else:
+
+            l_sol = solution_loss(model, mae, batch.extras['x_tf'], batch.extras['gamma_sol'], batch.extras['sols'], batch.extras['tmax'])
+            
+            total = (
+                weights.pde * l_pde
+                + weights.ic * l_ic
+                + weights.bc_left * l_bc_left
+                + weights.bc_right * l_bc_right
+                + weights.non_negative * l_nn
+                + weights.sol * l_sol
+            )
+
+            loss_dict = {
+                "pde": l_pde,
+                "ic": l_ic,
+                "bc_left": l_bc_left,
+                "bc_right": l_bc_right,
+                "non_neg": l_nn,
+                "sol": l_sol
+            }
+            return total, loss_dict
 
     return loss_fn
