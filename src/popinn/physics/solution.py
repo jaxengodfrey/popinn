@@ -14,7 +14,7 @@ def get_final_sols(gamma_evol, gamma_init, tf = 1., ns = 200, pts = 300):
 
     for idx, gam in enumerate(gamma_evol):
         x, f = calc_dadi(gam, gamma_init, lambda t: 1., tf = tf, ns = ns, pts = 300)
-        g = f * x * (1 - x) 
+        g = f * x * (1. - x) 
         sols[idx] = g
 
-    return jnp.asarray(x), jnp.asarray(sols)
+    return jnp.asarray(x[1:]), jnp.asarray(sols[:,1:])
