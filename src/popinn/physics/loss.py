@@ -33,7 +33,7 @@ def mae(residuals: jnp.ndarray) -> jnp.ndarray:
 
 def _mapped_pde_residual(model, colloc_xt, gamma_evol, nu = 1.):
     def single_residual(xt, gamma):
-        return pde_residual(model, xt[0], xt[1], gamma, nu = nu)
+        return pde_residual(model, xt[0], xt[1], gamma, nu = nu) * (jax.lax.stop_gradient(xt[0]))
     map_sample = jax.vmap(single_residual, in_axes = (1, None))
     map_gamma = jax.vmap(map_sample, in_axes = (2, 0))
     return map_gamma(colloc_xt, gamma_evol)

@@ -8,6 +8,8 @@ import optax
 
 from ..config import AdamConfig, Batch, LBFGSConfig
 
+import jax
+
 
 # ---------------------------------------------------------------------------
 # Internal training phases
