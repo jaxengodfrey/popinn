@@ -66,6 +66,15 @@ def _vmap_axis(fn: Callable, n_coords: int, n_aux: int, axis: int) -> Callable:
     All other coordinate arguments and aux leaves are broadcast (None).
     Uses pytree in_axes for the aux argument, so fn's signature
     fn(*coords, aux_tuple) is preserved at every level.
+
+    Args:
+        fn (Callable): function to vmap
+        n_coords (int): number of coordinates
+        n_aux (int): number of independent auxiliary components
+        axis (int): grid axis index to vmap. `axis <= n_coords + n_aux`
+    
+    Returns:
+        Callable: fn vmapped over a single grid axis.
     """
     if axis < n_coords:
         # map a single coordinate axis
@@ -92,13 +101,13 @@ def eval_grid(
     """Evaluate fn on the tensor product of coordinate and auxiliary axes.
 
     Args:
-        fn: per-point function fn(*coords, aux) -> scalar, with `aux` a
-            tuple of components. Works for `model` and for coordinate
-            derivatives `model.D(...)`, since D preserves the signature.
-        coords_1d: tuple of 1-D coordinate arrays, e.g. (x, t).
-        aux: tuple of auxiliary components. Each TOP-LEVEL element is one
-            grid axis (its leading axis); trailing dims are the per-call
-            input for that component. Independent top-level elements are
+        fn (Callable): per-point function fn(*coords, aux) -> scalar, with `aux` a
+            tuple of components. Works for any function that preserves this
+            signature, including a subclass of popinn.AbstractModel.
+        coords_1d (tuple[Array, ...]): tuple of 1-D coordinate arrays, e.g. (x, t).
+        aux (tuple, default = ()): tuple of auxiliary components. Each TOP-LEVEL 
+            element is one grid axis (its leading axis); trailing dims are the 
+            per-call input for that component. Independent top-level elements are
             crossed (their tensor product):
 
                 aux = (a, b)        # a.shape=(Na,), b.shape=(Nb,) -> Na x Nb grid
@@ -113,9 +122,9 @@ def eval_grid(
 
             so per call the function receives the pair (IC[k], param[k]).
             Defaults to () for models with no auxiliary inputs (pure PINNs).
-        outer_batch_size: if given, the OUTERMOST grid axis is chunked
-            with lax.map instead of vmapped, so only `outer_batch_size`
-            slices of that axis have live activations at once. The
+        outer_batch_size (int | None, default = None): if given, the OUTERMOST 
+            grid axis is chunked with lax.map instead of vmapped, so only 
+            `outer_batch_size` slices of that axis have live activations at once. The
             outermost axis is axis 0 of aux[-1] when aux is non-empty,
             and the last coordinate axis (axis 0 of coords_1d[-1]) when
             aux is empty -- so pure PINNs (aux=()) can chunk over a
@@ -180,11 +189,11 @@ def eval_grid_flat_aux(
     only materialized overhead is an (N_combos, n_aux) int array.
 
     Args:
-        fn: per-point function fn(*coords, aux) -> scalar, with `aux` a
+        fn (Callable): per-point function fn(*coords, aux) -> scalar, with `aux` a
             tuple of components. Works for any function that preserves this
             signature, including a subclass of popinn.AbstractModel.
-        coords_1d: tuple of 1-D coordinate arrays, e.g. (x, t).
-        aux: tuple of auxiliary components. Each TOP-LEVEL element is one
+        coords_1d (tuple[Array, ...]): tuple of 1-D coordinate arrays, e.g. (x, t).
+        aux (tuple, default = ()): tuple of auxiliary components. Each TOP-LEVEL element is one
             grid axis (its leading axis); trailing dims are the per-call
             input for that component. Independent top-level elements are
             crossed (their tensor product):
@@ -201,14 +210,15 @@ def eval_grid_flat_aux(
 
             so per call the function receives the pair (IC[k], param[k]).
             Defaults to () for models with no auxiliary inputs (pure PINNs).
-        batch_size: If given, the flattened combination axis is chunked so
-            only `batch_size` combinations have live activations at once.
+        batch_size (int | None, default = None): If given, the flattened combination 
+            axis is chunked so only `batch_size` combinations have live activations 
+            at once.
 
     Returns:
         Array of shape (*reversed(aux lens), *reversed(coord lens)) --
         the SAME layout as eval_grid. The flattened combinations are
         enumerated first-component-major, evaluated via lax.map, then
-        reshaped to (*aux lens, *coord-grid) and the aux axes reversed so
+        reshaped to (*aux lens, *coord lens) and the aux axes reversed so
         the last component leads, matching eval_grid's convention.
     """
     n_c, n_a = len(coords_1d), len(aux)
