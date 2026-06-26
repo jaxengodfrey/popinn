@@ -1,6 +1,8 @@
 # `Poppin` - Physics-Informed Deep Learning with JAX/Equinox
 
-`Popinn` is a small, composable library for physics-informed deep learning in JAX/Equinox. Define your problem (coordinates, PDE, boundary/initial conditions, parameters, etc.) using a few standard signatures and easily compose with any of the built-in algorithms: PINNs, Parametrized PINNs, and Deep Operator Networks. Built-ins not enough? Easily build your own algorithm by subclassing `popinn.AbstractModel`, following the `equinox` pattern.
+`Popinn` is a small, composable library for physics-informed deep learning in JAX/Equinox.
+
+Define your problem (coordinates, PDE, boundary/initial conditions, parameters, etc.) using a few standard signatures and easily compose with any of the built-in algorithms: PINNs ([Raissi et al. 2019](https://www.sciencedirect.com/science/article/abs/pii/S0021999118307125)), Parametrized PINNs ([Cho et al. 2024](https://arxiv.org/abs/2408.09446)), and Deep Operator Networks ([Lu et al. 2020](https://arxiv.org/abs/1910.03193)). Built-ins not enough? Easily build your own model by subclassing `popinn.AbstractModel`, following the `equinox` pattern of Abstract vs Concrete classes.
 
 Built on the JAX/Equinox ecosystem, the model, residuals, and loss are end-to-end differentiable and JIT-compiled. The network is evaluated across entire coordinate/parameter grids at once or in batches, allowing the flexibility to trade compute for memory.
 
@@ -16,7 +18,7 @@ fn(*coords, aux) -> scalar
 ```
 
 - **Coordinates** are passed as individual scalar arguments (`x, t, ...`) — not a packed array — so per-coordinate derivatives compose under `jax.grad`.
-- **Auxiliary inputs** (PDE parameters, sensor-sampled functions, initial conditions) are passed as a single trailing **tuple** (a pytree), so `jax` can address leaves and scalar/vector/ragged components need no special-casing.
+- **Auxiliary inputs** (PDE parameters, sensor-sampled functions, initial conditions) are passed as a single trailing **tuple** (a pytree), so `jax` can map across leaves and scalar/vector/ragged components need no special-casing.
 
 Everything else — batching, differentiation, loss composition — is built to operate on functions of this shape.
 
