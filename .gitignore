@@ -2,4 +2,4 @@ __pycache__/
 *.png
 *.eqx
 *.ipynb
-*.md
+design_notes.md
