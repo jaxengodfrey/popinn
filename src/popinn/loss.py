@@ -15,18 +15,28 @@ def _reduce(values: Array, metric: str | Callable) -> Float[Array, '']:
         values (Array): jax array of residual values.
         metric (str | Callable): metric to compute the loss. Can be 'mse'
             for mean-squared-err, 'mae' for mean-absolute-error, or a
-            custom Callable.
+            custom Callable mapping the grid of values to a scalar.
 
     Returns:
         Float[Array, '']: scalar loss value.
+
+    Raises:
+        ValueError: if a custom callable metric returns a non-scalar, or if
+            `metric` is a string other than 'mse' or 'mae'.
     """
     if callable(metric):
-        return metric(values)
+        out = metric(values)
+        if jnp.shape(out) != ():
+            raise ValueError(
+                f"ResidualTerm metrics should be scalar-output functions. "
+                f"Output had shape: {jnp.shape(out)}"
+            )
+        return out
     if metric == "mse":
         return jnp.mean(values**2)
     if metric == "mae":
         return jnp.mean(jnp.abs(values))
-    raise ValueError(f"unknown metric {metric!r}; use 'mse', 'mae', or a callable")
+    raise ValueError(f"unknown metric {metric!r}; use 'mse', 'mae', or a custom callable")
 
 
 class ResidualTerm(eqx.Module):
