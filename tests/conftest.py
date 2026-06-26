@@ -21,24 +21,23 @@ are migrated to rely on these.
 """
 
 import jax
+
 # Must run before any arrays are created anywhere in the suite.
 jax.config.update("jax_enable_x64", True)
+import equinox as eqx
 import jax.numpy as jnp
 import jax.random as jr
-
+import pytest
 from jaxtyping import Array
 
-import equinox as eqx
-
-import pytest
-
-from popinn import PINN, P2INN, DeepONet, ResidualTerm, eval_grid, FixedWeights, Loss
+from popinn import P2INN, PINN, DeepONet, FixedWeights, Loss, ResidualTerm, eval_grid
 
 # Small dims keep everything fast; tests exercise wiring, not capacity.
-NX, NT = 5, 4              # coordinate axis lengths
-NA, NB = 4, 6              # scalar-parameter axis lengths (P2INN)
-NF1, NF2 = 3, 2            # function-valued axis lengths (DeepONet)
-NF1_SEN, NF2_SEN = 7, 5    # sensor counts per branch (deliberately unequal)
+NX, NT = 5, 4  # coordinate axis lengths
+NA, NB = 4, 6  # scalar-parameter axis lengths (P2INN)
+NF1, NF2 = 3, 2  # function-valued axis lengths (DeepONet)
+NF1_SEN, NF2_SEN = 7, 5  # sensor counts per branch (deliberately unequal)
+
 
 class TrainingData(eqx.Module):
     dummy_coords: tuple[Array]
@@ -66,7 +65,7 @@ def fn_data():
 @pytest.fixture(scope="session")
 def training_data(grids):
     x, t, a, b = grids
-    return TrainingData((2.*x, 2.*t), (x,t), (a,b))
+    return TrainingData((2.0 * x, 2.0 * t), (x, t), (a, b))
 
 
 @pytest.fixture(scope="session")
@@ -77,10 +76,15 @@ def pinn():
 @pytest.fixture(scope="session")
 def p2inn():
     return P2INN(
-        jr.PRNGKey(0), num_params=2, num_coords=2,
-        param_hidden_dim=8, param_depth=2,
-        coord_hidden_dim=8, coord_depth=2,
-        manifold_inner_dim=8, manifold_depth=2,
+        jr.PRNGKey(0),
+        num_params=2,
+        num_coords=2,
+        param_hidden_dim=8,
+        param_depth=2,
+        coord_hidden_dim=8,
+        coord_depth=2,
+        manifold_inner_dim=8,
+        manifold_depth=2,
     )
 
 
@@ -95,51 +99,46 @@ def deeponet():
         trunk_depth=2,
     )
 
-@pytest.fixture(scope = 'session')
+
+@pytest.fixture(scope="session")
 def pde_residual_fn():
     def outer(model):
         def r(x, t, aux):
             return model.D(1)(x, t, aux) - model(x, t, aux)
+
         return r
+
     return outer
 
-@pytest.fixture(scope = 'session')
+
+@pytest.fixture(scope="session")
 def dummy_residual_fn():
     def outer(model):
         def r(x, t, aux):
             return model(x, t, aux)
+
         return r
+
     return outer
+
 
 @pytest.fixture(scope="session")
 def pde_residual_term(pde_residual_fn):
     fn = pde_residual_fn
-    return ResidualTerm(
-        name = 'pde',
-        residual_fn = fn,
-        metric = 'mse',
-        eval_fn = eval_grid
-    )
+    return ResidualTerm(name="pde", residual_fn=fn, metric="mse", eval_fn=eval_grid)
+
 
 @pytest.fixture(scope="session")
 def dummy_residual_term(dummy_residual_fn):
     fn = dummy_residual_fn
-    return ResidualTerm(
-        name = 'dummy',
-        residual_fn = fn,
-        metric = 'mse',
-        eval_fn = eval_grid
-    )
+    return ResidualTerm(name="dummy", residual_fn=fn, metric="mse", eval_fn=eval_grid)
+
 
 @pytest.fixture(scope="session")
 def fixed_weights():
-    return FixedWeights(
-        values = {'pde': 2., 'dummy': 1.}
-    )
+    return FixedWeights(values={"pde": 2.0, "dummy": 1.0})
+
 
 @pytest.fixture(scope="session")
 def loss(pde_residual_term, dummy_residual_term, fixed_weights):
-    return Loss(
-        [pde_residual_term, dummy_residual_term],
-        fixed_weights
-        )
+    return Loss([pde_residual_term, dummy_residual_term], fixed_weights)

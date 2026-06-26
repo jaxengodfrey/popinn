@@ -3,10 +3,10 @@ from __future__ import annotations
 import abc
 from collections.abc import Callable
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-import equinox as eqx
 from jaxtyping import Array, Float
 
 
@@ -29,9 +29,9 @@ class AbstractModel(eqx.Module):
     @abc.abstractmethod
     def _eval(
         self,
-        coords: Float[Array, 'num_coords'],
+        coords: Float[Array, "num_coords"],
         aux_inputs: tuple,
-    ) -> Float[Array, '']:
+    ) -> Float[Array, ""]:
         """Evaluate the model at one point.
 
         Args:
@@ -108,6 +108,7 @@ class AbstractModel(eqx.Module):
 # Abstract Model Classes
 # ──────────────────────────────────────────────────────────────
 
+
 class AbstractP2INN(AbstractModel):
     """Parameterized Physics-Informed Neural Network (abstract).
 
@@ -121,7 +122,7 @@ class AbstractP2INN(AbstractModel):
     coord_encoder: eqx.AbstractVar[eqx.nn.MLP]
     manifold: eqx.AbstractVar[eqx.nn.MLP]
 
-    def _eval(self, coords: Float[Array, 'num_coords'], aux_inputs: tuple) -> Float[Array, '']:
+    def _eval(self, coords: Float[Array, "num_coords"], aux_inputs: tuple) -> Float[Array, ""]:
         """Encode parameters and coordinates separately, then combine.
 
         Args:
@@ -155,7 +156,7 @@ class AbstractDeepONet(AbstractModel):
     trunk: eqx.AbstractVar[eqx.nn.MLP]
     bias: eqx.AbstractVar[Array]
 
-    def _eval(self, coords: Float[Array, 'num_coords'], aux_inputs: tuple) -> Float[Array, '']:
+    def _eval(self, coords: Float[Array, "num_coords"], aux_inputs: tuple) -> Float[Array, ""]:
         """Combine trunk (coordinate) and branch (function) embeddings.
 
         Args:
@@ -177,6 +178,7 @@ class AbstractDeepONet(AbstractModel):
 # ──────────────────────────────────────────────────────────────
 # Concrete Model Classes
 # ──────────────────────────────────────────────────────────────
+
 
 class PINN(AbstractModel):
     """Standard Physics-Informed Neural Network (no auxiliary inputs).
@@ -207,14 +209,14 @@ class PINN(AbstractModel):
             hidden_dim (int): width of each hidden layer.
             depth (int): number of hidden layers.
             inner_activation (Callable): activation between hidden layers.
-            final_activation (Callable): activation on the output. The default softplus 
+            final_activation (Callable): activation on the output. The default softplus
             keeps the solution positive; override for sign-changing solutions.
             mlp_kwargs (dict): extra keyword arguments forwarded to
                 eqx.nn.MLP.
         """
         self.mlp = eqx.nn.MLP(
             in_size=num_coords,
-            out_size='scalar',
+            out_size="scalar",
             width_size=hidden_dim,
             depth=depth,
             activation=inner_activation,
@@ -225,9 +227,9 @@ class PINN(AbstractModel):
 
     def _eval(
         self,
-        coords: Float[Array, 'num_coords'],
+        coords: Float[Array, "num_coords"],
         aux_inputs: tuple,
-    ) -> Float[Array, '']:
+    ) -> Float[Array, ""]:
         """Map coordinates to a scalar; aux_inputs is ignored.
 
         Args:
@@ -376,8 +378,8 @@ class DeepONet(AbstractDeepONet):
         branch_trunk_output_dim: int = 100,
         branch_depth: tuple = (5,),
         trunk_depth: int = 3,
-        branch_kwargs: dict = {'activation': jnp.tanh},
-        trunk_kwargs: dict = {'activation': jnp.tanh},
+        branch_kwargs: dict = {"activation": jnp.tanh},
+        trunk_kwargs: dict = {"activation": jnp.tanh},
     ):
         """Build the branch networks, trunk, and bias.
 
@@ -400,7 +402,7 @@ class DeepONet(AbstractDeepONet):
 
         key, trunk_key, bias_key = jr.split(key, 3)
 
-        self.bias = jr.uniform(bias_key, minval=-1., maxval=1.)
+        self.bias = jr.uniform(bias_key, minval=-1.0, maxval=1.0)
 
         self.trunk = eqx.nn.MLP(
             in_size=trunk_input_dim,
@@ -423,9 +425,6 @@ class DeepONet(AbstractDeepONet):
                     width_size=branch_trunk_output_dim,
                     depth=branch_depth[idx],
                     key=branch_keys[idx],
-                    **branch_kwargs)
+                    **branch_kwargs,
+                )
             )
-
-        
-
-        

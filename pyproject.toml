@@ -7,12 +7,38 @@ authors = []
 requires-python = ">=3.11"
 dependencies = [
   "jax>=0.7.2",
-  "pytest",
+  "equinox",
+  "jaxtyping",
+  "optax",
+  "matplotlib",
 ]
+
+[project.optional-dependencies]
+lbfgs = ["jaxopt"]          # only needed for train_lbfgs / LBFGSConfig
+
+[dependency-groups]         # PEP 735 — dev tooling, not installed by consumers
+test = ["pytest", "numpy"]
+dev = ["pre-commit", {include-group = "test"}]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/popinn"]
+
+[tool.ruff]
+line-length = 150
+target-version = "py311"
+
+[tool.ruff.lint]
+extend-select = ["I", "RUF022"]
+ignore = [
+    "F722",  # jaxtyping: dim strings ('') read as malformed forward-refs
+    "F821",  # jaxtyping: dim names ('num_coords') read as undefined names
+    "E731",  # lambda assignment is idiomatic here (lax.map bodies, metrics)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/conftest.py"         = ["E402"]
+"**/deeponet_example.py" = ["E402"]
+"**/test_*.py"           = ["E741"]

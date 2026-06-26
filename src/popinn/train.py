@@ -1,17 +1,15 @@
 import dataclasses
 from collections.abc import Callable, Mapping
 
-import jax
-import jax.random as jr
 import equinox as eqx
+import jax.random as jr
 import optax
-
 from jaxtyping import PRNGKeyArray
-
 
 # ──────────────────────────────────────────────────────────────
 # Optimizer configs
 # ──────────────────────────────────────────────────────────────
+
 
 @dataclasses.dataclass(frozen=True)
 class AdamConfig:
@@ -92,10 +90,7 @@ def warmup_cosine(
             must be positive.
     """
     if warmup_steps >= num_epochs:
-        raise ValueError(
-            f"warmup_steps ({warmup_steps}) must be < num_epochs "
-            f"({num_epochs}); the cosine decay spans the remaining steps."
-        )
+        raise ValueError(f"warmup_steps ({warmup_steps}) must be < num_epochs ({num_epochs}); the cosine decay spans the remaining steps.")
     return optax.warmup_cosine_decay_schedule(
         init_value=init_lr,
         peak_value=peak_lr,
@@ -107,6 +102,7 @@ def warmup_cosine(
 # ──────────────────────────────────────────────────────────────
 # Training phases
 # ──────────────────────────────────────────────────────────────
+
 
 def train_adam(
     model,
@@ -151,12 +147,8 @@ def train_adam(
 
     @eqx.filter_jit
     def step(model, opt_state, batch):
-        (loss_val, loss_dict), grads = eqx.filter_value_and_grad(
-            lambda m: loss_fn(m, batch), has_aux=True
-        )(model)
-        updates, opt_state_new = optimizer.update(
-            grads, opt_state, eqx.filter(model, eqx.is_array)
-        )
+        (loss_val, loss_dict), grads = eqx.filter_value_and_grad(lambda m: loss_fn(m, batch), has_aux=True)(model)
+        updates, opt_state_new = optimizer.update(grads, opt_state, eqx.filter(model, eqx.is_array))
         model_new = eqx.apply_updates(model, updates)
         return model_new, opt_state_new, loss_val, loss_dict
 
@@ -216,10 +208,7 @@ def train_lbfgs(
     reserved = {"fun", "maxiter", "has_aux", "tol", "history_size"}
     overlap = reserved & cfg.optimizer_kwargs.keys()
     if overlap:
-        raise ValueError(
-            f"solver_kwargs may not override {sorted(overlap)}; set tol and "
-            f"history_size via their own LBFGSConfig fields."
-        )
+        raise ValueError(f"solver_kwargs may not override {sorted(overlap)}; set tol and history_size via their own LBFGSConfig fields.")
 
     params, static = eqx.partition(model, eqx.is_array)
 
@@ -227,14 +216,7 @@ def train_lbfgs(
         model_rebuilt = eqx.combine(params, static)
         return loss_fn(model_rebuilt, batch)
 
-    solver = jaxopt.LBFGS(
-        fun=objective,
-        maxiter=1,
-        has_aux=True,
-        tol=cfg.tol,
-        history_size=cfg.history_size,
-        **cfg.optimizer_kwargs
-    )
+    solver = jaxopt.LBFGS(fun=objective, maxiter=1, has_aux=True, tol=cfg.tol, history_size=cfg.history_size, **cfg.optimizer_kwargs)
 
     lbfgs_state = solver.init_state(params)
     history: dict[str, list] = {}
@@ -255,8 +237,7 @@ def train_lbfgs(
             print(f"[L-BFGS] Step {step + 1:>6d} | total: {loss_val:.2e} | {parts}")
 
         if lbfgs_state.error < cfg.tol:
-            print(f"[L-BFGS] Converged at step {step + 1} "
-                  f"(error={lbfgs_state.error:.2e})")
+            print(f"[L-BFGS] Converged at step {step + 1} (error={lbfgs_state.error:.2e})")
             break
 
     model = eqx.combine(params, static)
@@ -335,7 +316,10 @@ def train_model(
         if isinstance(opt_cfg, AdamConfig):
             key, subkey = jr.split(key)
             model, phase_history = train_adam(
-                model, batch, loss_fn, opt_cfg,
+                model,
+                batch,
+                loss_fn,
+                opt_cfg,
                 sample_fn=sample_fn,
                 resample_every=resample_every,
                 key=subkey,
@@ -347,14 +331,9 @@ def train_model(
             if sample_fn is not None:
                 key, subkey = jr.split(key)
                 phase_batch = sample_fn(subkey)
-            model, phase_history = train_lbfgs(
-                model, phase_batch, loss_fn, opt_cfg
-            )
+            model, phase_history = train_lbfgs(model, phase_batch, loss_fn, opt_cfg)
         else:
-            raise TypeError(
-                f"Unknown optimizer config type: {type(opt_cfg)}. "
-                "Expected AdamConfig or LBFGSConfig."
-            )
+            raise TypeError(f"Unknown optimizer config type: {type(opt_cfg)}. Expected AdamConfig or LBFGSConfig.")
 
         for k, v in phase_history.items():
             history.setdefault(k, []).extend(v)

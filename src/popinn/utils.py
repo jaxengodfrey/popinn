@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 
+
 def plot_training_history(history: dict, save_path: str = None):
     """Plot training loss curves from the history dict returned by train_model.
 

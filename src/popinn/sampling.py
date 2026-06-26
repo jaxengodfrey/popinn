@@ -20,8 +20,8 @@ concrete implementation.
 import abc
 from collections.abc import Sequence
 
-import jax.random as jr
 import equinox as eqx
+import jax.random as jr
 from jaxtyping import PRNGKeyArray
 
 
@@ -123,10 +123,7 @@ class UniformCollocationSampler(AbstractSampler):
         n_axes = len(coords)
 
         if len(bounds) != n_axes:
-            raise ValueError(
-                f"bounds has {len(bounds)} entries but data.{field} has "
-                f"{n_axes} coordinate axes; expected one `(min, max)` per axis."
-            )
+            raise ValueError(f"bounds has {len(bounds)} entries but data.{field} has {n_axes} coordinate axes; expected one `(min, max)` per axis.")
 
         if num_samples is None:
             counts = tuple(c.shape[0] for c in coords)
@@ -134,10 +131,7 @@ class UniformCollocationSampler(AbstractSampler):
             counts = (num_samples,) * n_axes
         else:
             if len(num_samples) != n_axes:
-                raise ValueError(
-                    f"num_samples has {len(num_samples)} entries but "
-                    f"data.{field} has {n_axes} coordinate axes."
-                )
+                raise ValueError(f"num_samples has {len(num_samples)} entries but data.{field} has {n_axes} coordinate axes.")
             counts = tuple(num_samples)
 
         self.data = data
@@ -158,9 +152,7 @@ class UniformCollocationSampler(AbstractSampler):
         """
         keys = jr.split(key, len(self.counts))
         new_coords = tuple(
-            jr.uniform(keys[i], (self.counts[i],),
-                       minval=self.bounds[i][0], maxval=self.bounds[i][1])
-            for i in range(len(self.counts))
+            jr.uniform(keys[i], (self.counts[i],), minval=self.bounds[i][0], maxval=self.bounds[i][1]) for i in range(len(self.counts))
         )
         # Replace only `field`; tree_at returns a new module, leaving the
         # reference `data` (and its aux / other fields) untouched.

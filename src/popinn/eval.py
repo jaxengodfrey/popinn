@@ -52,10 +52,10 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array
 
-
 # ──────────────────────────────────────────────────────────────
 # Internal: one-vmap-per-axis construction
 # ──────────────────────────────────────────────────────────────
+
 
 def _vmap_axis(fn: Callable, n_coords: int, n_aux: int, axis: int) -> Callable:
     """Wrap fn in one vmap that maps exactly one grid axis.
@@ -72,7 +72,7 @@ def _vmap_axis(fn: Callable, n_coords: int, n_aux: int, axis: int) -> Callable:
         n_coords (int): number of coordinates
         n_aux (int): number of independent auxiliary components
         axis (int): grid axis index to vmap. `axis <= n_coords + n_aux`
-    
+
     Returns:
         Callable: fn vmapped over a single grid axis.
     """
@@ -92,6 +92,7 @@ def _vmap_axis(fn: Callable, n_coords: int, n_aux: int, axis: int) -> Callable:
 # Nested-vmap tensor product
 # ──────────────────────────────────────────────────────────────
 
+
 def eval_grid(
     fn: Callable,
     coords_1d: tuple[Array, ...],
@@ -105,8 +106,8 @@ def eval_grid(
             tuple of components. Works for any function that preserves this
             signature, including a subclass of popinn.AbstractModel.
         coords_1d (tuple[Array, ...]): tuple of 1-D coordinate arrays, e.g. (x, t).
-        aux (tuple, default = ()): tuple of auxiliary components. Each TOP-LEVEL 
-            element is one grid axis (its leading axis); trailing dims are the 
+        aux (tuple, default = ()): tuple of auxiliary components. Each TOP-LEVEL
+            element is one grid axis (its leading axis); trailing dims are the
             per-call input for that component. Independent top-level elements are
             crossed (their tensor product):
 
@@ -122,8 +123,8 @@ def eval_grid(
 
             so per call the function receives the pair (IC[k], param[k]).
             Defaults to () for models with no auxiliary inputs (pure PINNs).
-        outer_batch_size (int | None, default = None): if given, the OUTERMOST 
-            grid axis is chunked with lax.map instead of vmapped, so only 
+        outer_batch_size (int | None, default = None): if given, the OUTERMOST
+            grid axis is chunked with lax.map instead of vmapped, so only
             `outer_batch_size` slices of that axis have live activations at once. The
             outermost axis is axis 0 of aux[-1] when aux is non-empty,
             and the last coordinate axis (axis 0 of coords_1d[-1]) when
@@ -171,6 +172,7 @@ def eval_grid(
 # Joint chunking over ALL parameter combinations
 # ──────────────────────────────────────────────────────────────
 
+
 def eval_grid_flat_aux(
     fn: Callable,
     coords_1d: tuple[Array, ...],
@@ -210,8 +212,8 @@ def eval_grid_flat_aux(
 
             so per call the function receives the pair (IC[k], param[k]).
             Defaults to () for models with no auxiliary inputs (pure PINNs).
-        batch_size (int | None, default = None): If given, the flattened combination 
-            axis is chunked so only `batch_size` combinations have live activations 
+        batch_size (int | None, default = None): If given, the flattened combination
+            axis is chunked so only `batch_size` combinations have live activations
             at once.
 
     Returns:
@@ -230,9 +232,7 @@ def eval_grid_flat_aux(
 
     # Axis length of a component = leading-axis length of its first leaf
     # (for grouped components, all leaves share it by convention).
-    aux_lens = tuple(
-        jax.tree_util.tree_leaves(comp)[0].shape[0] for comp in aux
-    )
+    aux_lens = tuple(jax.tree_util.tree_leaves(comp)[0].shape[0] for comp in aux)
 
     # Vectorize the coordinate axes only; the aux tuple stays per-call.
     g = fn
@@ -249,10 +249,7 @@ def eval_grid_flat_aux(
     # (sub-tuple) components uniformly: every leaf is indexed at axis 0
     # by the same index, preserving zip pairing within a group.
     def body(ix):
-        slices = tuple(
-            jax.tree_util.tree_map(lambda leaf, k=k: leaf[ix[k]], aux[k])
-            for k in range(n_a)
-        )
+        slices = tuple(jax.tree_util.tree_map(lambda leaf, k=k: leaf[ix[k]], aux[k]) for k in range(n_a))
         return g(*coords_1d, slices)
 
     out = jax.lax.map(body, idx, batch_size=batch_size)

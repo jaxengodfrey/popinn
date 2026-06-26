@@ -1,13 +1,15 @@
-from .eval import eval_grid, eval_grid_flat_aux
-from .models import AbstractModel
-from jaxtyping import Array, Float
+import abc
 from collections.abc import Callable
+
 import equinox as eqx
 import jax.numpy as jnp
-import abc
+from jaxtyping import Array, Float
+
+from .eval import eval_grid
+from .models import AbstractModel
 
 
-def _reduce(values: Array, metric: str | Callable) -> Float[Array, '']:
+def _reduce(values: Array, metric: str | Callable) -> Float[Array, ""]:
     """
     Reduce a grid of residual values to a scalar term loss.
 
@@ -27,10 +29,7 @@ def _reduce(values: Array, metric: str | Callable) -> Float[Array, '']:
     if callable(metric):
         out = metric(values)
         if jnp.shape(out) != ():
-            raise ValueError(
-                f"ResidualTerm metrics should be scalar-output functions. "
-                f"Output had shape: {jnp.shape(out)}"
-            )
+            raise ValueError(f"ResidualTerm metrics should be scalar-output functions. Output had shape: {jnp.shape(out)}")
         return out
     if metric == "mse":
         return jnp.mean(values**2)
@@ -76,11 +75,11 @@ class ResidualTerm(eqx.Module):
 
     name: str = eqx.field(static=True)
     residual_fn: Callable = eqx.field(static=True)
-    metric: str | Callable = eqx.field(static=True, default='mse')
+    metric: str | Callable = eqx.field(static=True, default="mse")
     eval_fn: Callable = eqx.field(static=True, default=eval_grid)
     batch_size: int | None = eqx.field(static=True, default=None)
 
-    def __call__(self, model: AbstractModel, data: eqx.Module) -> Float[Array, '']:
+    def __call__(self, model: AbstractModel, data: eqx.Module) -> Float[Array, ""]:
         """
         Evaluate the residual over this term's grid and reduce to a scalar.
 
@@ -97,11 +96,11 @@ class ResidualTerm(eqx.Module):
         Returns:
             Float[Array, '']: the scalar loss for this term.
         """
-        coords = getattr(data, self.name + '_coords')
+        coords = getattr(data, self.name + "_coords")
         aux = data.aux
         kw = {}
         if self.batch_size is not None:
-            key = 'batch_size' if self.eval_fn is not eval_grid else "outer_batch_size"
+            key = "batch_size" if self.eval_fn is not eval_grid else "outer_batch_size"
             kw[key] = self.batch_size
         values = self.eval_fn(self.residual_fn(model), coords, aux, **kw)
         return _reduce(values, self.metric)
@@ -126,7 +125,7 @@ class AbstractWeights(eqx.Module):
     values: eqx.AbstractVar[dict]
 
     @abc.abstractmethod
-    def combine(self, residuals: dict) -> Float[Array, '']:
+    def combine(self, residuals: dict) -> Float[Array, ""]:
         """
         Combine per-term scalar losses into the weighted total.
 
@@ -155,7 +154,7 @@ class FixedWeights(AbstractWeights):
 
     values: dict = eqx.field(static=True)
 
-    def combine(self, residuals: dict) -> Float[Array, '']:
+    def combine(self, residuals: dict) -> Float[Array, ""]:
         """
         Combine per-term scalar losses into the weighted sum.
 
@@ -192,29 +191,18 @@ class Loss(eqx.Module):
     res_terms: list[ResidualTerm]
     weights: AbstractWeights | None
 
-    def __init__(
-        self,
-        res_terms: list[ResidualTerm],
-        weights: AbstractWeights | None = None
-    ):
+    def __init__(self, res_terms: list[ResidualTerm], weights: AbstractWeights | None = None):
         self.res_terms = res_terms
         keys = [t.name for t in res_terms]
         if len(keys) != len(set(keys)):
             raise ValueError(f"duplicate term names in res_terms: {keys}")
         if weights is None:
-            weights = FixedWeights(values={k: 1. for k in keys})
+            weights = FixedWeights(values={k: 1.0 for k in keys})
         elif set(weights.values.keys()) != set(keys):
-            raise ValueError(
-                f"weight keys {sorted(weights.values)} do not match "
-                f"term names {sorted(keys)}"
-            )
+            raise ValueError(f"weight keys {sorted(weights.values)} do not match term names {sorted(keys)}")
         self.weights = weights
 
-    def __call__(
-        self,
-        model,
-        data
-    ) -> tuple[Float[Array, ''], dict]:
+    def __call__(self, model, data) -> tuple[Float[Array, ""], dict]:
         """
         Evaluate all terms and return the weighted total plus a dictionary with
         the individual un-weighted loss terms.
@@ -227,7 +215,7 @@ class Loss(eqx.Module):
 
         Returns:
             tuple[Float[Array, ''], dict]: the scalar weighted total loss
-                and a dict mapping each term name to its un-weighted scalar 
+                and a dict mapping each term name to its un-weighted scalar
                 loss.
         """
         residuals = {}

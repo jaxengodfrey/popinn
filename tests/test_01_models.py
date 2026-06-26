@@ -26,13 +26,12 @@ float64 is enabled process-wide in conftest.py; the closed-form derivative
 checks below rely on it to hold a tight tolerance.
 """
 
-import jax
 import jax.numpy as jnp
 import jax.random as jr
 import pytest
-
-from popinn import AbstractModel, PINN, P2INN, DeepONet
 from conftest import NF1_SEN, NF2_SEN
+
+from popinn import P2INN, PINN, AbstractModel
 
 # Tight for exact/closed-form checks; looser for finite differences.
 RTOL, ATOL = 1e-9, 1e-12
@@ -42,6 +41,7 @@ FD_RTOL, FD_ATOL = 1e-5, 1e-7
 # ──────────────────────────────────────────────────────────────
 # Per-point contract: scalar output
 # ──────────────────────────────────────────────────────────────
+
 
 def test_scalar_output_contract(pinn, p2inn, deeponet):
     """Each model must return a true scalar, shape () not (1,).
@@ -60,6 +60,7 @@ def test_scalar_output_contract(pinn, p2inn, deeponet):
 # ──────────────────────────────────────────────────────────────
 # Call dispatch: how __call__ separates coords from aux
 # ──────────────────────────────────────────────────────────────
+
 
 def test_pinn_aux_optional_and_ignored(pinn):
     """model(x, t), model(x, t, ()), and model(x, t, <anything>) agree.
@@ -92,6 +93,7 @@ def test_aux_must_be_tuple_not_list(pinn):
 # Derivatives via D
 # ──────────────────────────────────────────────────────────────
 
+
 class _Quadratic(AbstractModel):
     """Closed-form model u(x, t) = x^2 * t + t, with no parameters.
 
@@ -104,7 +106,7 @@ class _Quadratic(AbstractModel):
 
     def _eval(self, coords, aux_inputs):
         x, t = coords[0], coords[1]
-        return x ** 2 * t + t
+        return x**2 * t + t
 
 
 def test_D_exact_on_closed_form():
@@ -117,15 +119,13 @@ def test_D_exact_on_closed_form():
     """
     m = _Quadratic()
     x, t = 0.4, 1.3
-    assert jnp.allclose(m.D(0)(x, t),    2 * x * t,      rtol=RTOL, atol=ATOL)
-    assert jnp.allclose(m.D(0, 0)(x, t), 2 * t,          rtol=RTOL, atol=ATOL)
-    assert jnp.allclose(m.D(1)(x, t),    x ** 2 + 1.0,   rtol=RTOL, atol=ATOL)
+    assert jnp.allclose(m.D(0)(x, t), 2 * x * t, rtol=RTOL, atol=ATOL)
+    assert jnp.allclose(m.D(0, 0)(x, t), 2 * t, rtol=RTOL, atol=ATOL)
+    assert jnp.allclose(m.D(1)(x, t), x**2 + 1.0, rtol=RTOL, atol=ATOL)
 
 
 def test_D_matches_finite_difference_on_real_model(p2inn):
-    """On a real network, D agrees with a central finite difference.
-
-    """
+    """On a real network, D agrees with a central finite difference."""
     x, t, params = 0.3, 0.6, (1.2, -0.4)
     eps = 1e-6
     fd = (p2inn(x, t + eps, params) - p2inn(x, t - eps, params)) / (2 * eps)
@@ -139,12 +139,13 @@ def test_D_preserves_call_signature(p2inn):
     derivative must accept the same (coords..., aux) call and return shape ().
     """
     assert p2inn.D(0)(0.3, 0.6, (1.2, -0.4)).shape == ()
-    assert p2inn.D(1,1)(0.3, 0.6, (1.2, -0.4)).shape == ()
+    assert p2inn.D(1, 1)(0.3, 0.6, (1.2, -0.4)).shape == ()
 
 
 # ──────────────────────────────────────────────────────────────
 # Sub-network wiring: every encoder/branch is connected
 # ──────────────────────────────────────────────────────────────
+
 
 def test_p2inn_depends_on_params_and_coords(p2inn):
     """Output moves when either a parameter or a coordinate changes.
@@ -155,8 +156,8 @@ def test_p2inn_depends_on_params_and_coords(p2inn):
     test elsewhere could still pass by coincidence; this catches it directly.
     """
     base = p2inn(0.3, 0.6, (1.0, -0.5))
-    diff_param = p2inn(0.3, 0.6, (1.7, -0.5))   # changed a only
-    diff_coord = p2inn(0.8, 0.6, (1.0, -0.5))   # changed x only
+    diff_param = p2inn(0.3, 0.6, (1.7, -0.5))  # changed a only
+    diff_coord = p2inn(0.8, 0.6, (1.0, -0.5))  # changed x only
     assert not jnp.allclose(base, diff_param, rtol=RTOL, atol=ATOL)
     assert not jnp.allclose(base, diff_coord, rtol=RTOL, atol=ATOL)
 
@@ -181,6 +182,7 @@ def test_deeponet_depends_on_every_branch(deeponet):
 # Construction: dims wire up; wrong-length aux fails loudly
 # ──────────────────────────────────────────────────────────────
 
+
 def test_pinn_arbitrary_coord_count():
     """num_coords sizes the input layer; a 3-coord PINN takes three scalars."""
     model = PINN(jr.PRNGKey(0), num_coords=3, hidden_dim=8, depth=2)
@@ -190,10 +192,15 @@ def test_pinn_arbitrary_coord_count():
 def test_p2inn_multiple_params_and_coords():
     """num_params / num_coords size the two encoders independently."""
     model = P2INN(
-        jr.PRNGKey(0), num_params=2, num_coords=3,
-        param_hidden_dim=8, param_depth=2,
-        coord_hidden_dim=8, coord_depth=2,
-        manifold_inner_dim=8, manifold_depth=2,
+        jr.PRNGKey(0),
+        num_params=2,
+        num_coords=3,
+        param_hidden_dim=8,
+        param_depth=2,
+        coord_hidden_dim=8,
+        coord_depth=2,
+        manifold_inner_dim=8,
+        manifold_depth=2,
     )
     assert model(0.1, 0.2, 0.3, (1.0, -0.5)).shape == ()
 
@@ -211,6 +218,7 @@ def test_deeponet_wrong_aux_length_raises(deeponet):
 # ──────────────────────────────────────────────────────────────
 # Characterization: default final activation (a documented gotcha)
 # ──────────────────────────────────────────────────────────────
+
 
 def test_default_final_activation_is_positive(pinn, p2inn):
     """PINN/P2INN default to a softplus final activation -> output > 0.
@@ -232,7 +240,6 @@ def test_final_activation_override_is_applied():
     confirming the final activation is genuinely applied (and giving the
     escape hatch for sign-changing solutions the positivity test warns about).
     """
-    model = PINN(jr.PRNGKey(0), num_coords=2, hidden_dim=8, depth=2,
-                 final_activation=jnp.tanh)
+    model = PINN(jr.PRNGKey(0), num_coords=2, hidden_dim=8, depth=2, final_activation=jnp.tanh)
     out = model(0.3, 0.7)
     assert jnp.abs(out) <= 1.0

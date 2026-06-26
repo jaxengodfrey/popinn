@@ -31,19 +31,19 @@ suite would need a separate pytest invocation.
 
 import itertools
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
-import equinox as eqx
 import numpy as np
 import pytest
-
-from popinn import eval_grid, eval_grid_flat_aux
 
 # Models, grids, fn_data and the axis-length constants are shared via conftest.py
 # (which also enables float64 before any array is created). Importing the
 # constants here keeps the shape assertions and parametrizations in sync with
 # the fixtures that produce the data.
-from conftest import NX, NT, NA, NB, NF1, NF2, NF1_SEN, NF2_SEN
+from conftest import NA, NB, NF1, NF1_SEN, NF2, NF2_SEN, NT, NX
+
+from popinn import eval_grid, eval_grid_flat_aux
 
 # Tight tolerances are intentional -- see precision note above.
 RTOL, ATOL = 1e-9, 1e-12
@@ -52,6 +52,7 @@ RTOL, ATOL = 1e-9, 1e-12
 # ──────────────────────────────────────────────────────────────
 # Reference implementation: explicit per-point loop
 # ──────────────────────────────────────────────────────────────
+
 
 def reference_grid(fn, coords_1d, aux):
     """Slow, unambiguous ground truth.
@@ -67,6 +68,7 @@ def reference_grid(fn, coords_1d, aux):
     (sub-tuple) aux components: a component's axis length is its first leaf's
     leading dim, and slicing indexes every leaf by the same index.
     """
+
     def axis_len(comp):
         return jax.tree_util.tree_leaves(comp)[0].shape[0]
 
@@ -81,14 +83,14 @@ def reference_grid(fn, coords_1d, aux):
         aux_slice = tuple(slice_comp(c, i) for c, i in zip(aux, aux_idx))
         for coord_idx in itertools.product(*(range(n) for n in coord_lens)):
             pt = [c[j] for c, j in zip(coords_1d, coord_idx)]
-            out[tuple(reversed(aux_idx)) + tuple(reversed(coord_idx))] = \
-                fn(*pt, aux_slice)
+            out[tuple(reversed(aux_idx)) + tuple(reversed(coord_idx))] = fn(*pt, aux_slice)
     return jnp.asarray(out)
 
 
 # ──────────────────────────────────────────────────────────────
 # Correctness: values and axis order vs. the reference loop
 # ──────────────────────────────────────────────────────────────
+
 
 def test_p2inn_matches_reference(p2inn, grids):
     """Scalar-parameter aux: crossed (a, b) grid, P2INN."""
@@ -116,13 +118,13 @@ def test_axis_order_single_point(p2inn, grids):
     x, t, a, b = grids
     u = eval_grid(p2inn, (x, t), (a, b))
     i, j, k, l = 4, 1, 2, 1
-    assert jnp.allclose(u[l, k, j, i], p2inn(x[i], t[j], (a[k], b[l])),
-                        rtol=RTOL, atol=ATOL)
+    assert jnp.allclose(u[l, k, j, i], p2inn(x[i], t[j], (a[k], b[l])), rtol=RTOL, atol=ATOL)
 
 
 # ──────────────────────────────────────────────────────────────
 # Strategy equivalence: chunked paths == full vmap
 # ──────────────────────────────────────────────────────────────
+
 
 # 1 = fully sequential; 5 = non-divisor of NA*NB = 24 (remainder); NA*NB = single chunk.
 @pytest.mark.parametrize("batch_size", [1, 5, NA * NB])
@@ -149,17 +151,14 @@ def test_chunked_vector_aux(deeponet, grids, fn_data):
     x, t, _, _ = grids
     f1, f2 = fn_data
     full = eval_grid(deeponet, (x, t), (f1, f2))
-    assert jnp.allclose(
-        eval_grid_flat_aux(deeponet, (x, t), (f1, f2), batch_size=4),
-        full, rtol=RTOL, atol=ATOL)
-    assert jnp.allclose(
-        eval_grid(deeponet, (x, t), (f1, f2), outer_batch_size=1),
-        full, rtol=RTOL, atol=ATOL)
+    assert jnp.allclose(eval_grid_flat_aux(deeponet, (x, t), (f1, f2), batch_size=4), full, rtol=RTOL, atol=ATOL)
+    assert jnp.allclose(eval_grid(deeponet, (x, t), (f1, f2), outer_batch_size=1), full, rtol=RTOL, atol=ATOL)
 
 
 # ──────────────────────────────────────────────────────────────
 # aux structure: grouped (zipped) components
 # ──────────────────────────────────────────────────────────────
+
 
 def test_grouped_aux_zips_paired_components(deeponet, grids, fn_data):
     """A grouped sub-tuple shares ONE axis (zipped), crossed against an
@@ -169,7 +168,7 @@ def test_grouped_aux_zips_paired_components(deeponet, grids, fn_data):
     and across all execution strategies."""
     x, t, _, _ = grids
     f1, f2 = fn_data
-    gammas = jnp.linspace(0.5, 2.0, NF2)        # paired with f2 along axis 0
+    gammas = jnp.linspace(0.5, 2.0, NF2)  # paired with f2 along axis 0
 
     # Residual-shaped fn that consumes both the grouped function and its scalar.
     def fn(x_, t_, aux):
@@ -182,15 +181,14 @@ def test_grouped_aux_zips_paired_components(deeponet, grids, fn_data):
     assert jnp.allclose(full, reference_grid(fn, (x, t), aux), rtol=RTOL, atol=ATOL)
 
     # Chunking must preserve the zip pairing (leaf-wise gather by one index).
-    assert jnp.allclose(eval_grid_flat_aux(fn, (x, t), aux, batch_size=4),
-                        full, rtol=RTOL, atol=ATOL)
-    assert jnp.allclose(eval_grid(fn, (x, t), aux, outer_batch_size=1),
-                        full, rtol=RTOL, atol=ATOL)
+    assert jnp.allclose(eval_grid_flat_aux(fn, (x, t), aux, batch_size=4), full, rtol=RTOL, atol=ATOL)
+    assert jnp.allclose(eval_grid(fn, (x, t), aux, outer_batch_size=1), full, rtol=RTOL, atol=ATOL)
 
 
 # ──────────────────────────────────────────────────────────────
 # Per-point contract: scalar output, optional aux, derivatives, grads
 # ──────────────────────────────────────────────────────────────
+
 
 def test_scalar_output_contract(pinn, p2inn, deeponet):
     """jax.grad / model.D require a true scalar (shape (), not (1,)). Catches
@@ -211,20 +209,17 @@ def test_empty_aux_pure_pinn(pinn, grids):
 
     # Dispatch: omitted aux == explicit empty aux, per point and through D.
     assert jnp.allclose(pinn(0.3, 0.7), pinn(0.3, 0.7, ()), rtol=RTOL, atol=ATOL)
-    assert jnp.allclose(pinn.D(0, 0)(0.3, 0.7), pinn.D(0, 0)(0.3, 0.7, ()),
-                        rtol=RTOL, atol=ATOL)
+    assert jnp.allclose(pinn.D(0, 0)(0.3, 0.7), pinn.D(0, 0)(0.3, 0.7, ()), rtol=RTOL, atol=ATOL)
 
-    full = eval_grid(pinn, (x, t))                     # aux defaults to ()
+    full = eval_grid(pinn, (x, t))  # aux defaults to ()
     assert full.shape == (NT, NX)
     assert jnp.allclose(full, eval_grid(pinn, (x, t), ()), rtol=RTOL, atol=ATOL)
     assert jnp.allclose(full[1, 2], pinn(x[2], t[1]), rtol=RTOL, atol=ATOL)
 
     # Both chunking paths, including a chunk size that doesn't divide NT = 4.
-    assert jnp.allclose(eval_grid_flat_aux(pinn, (x, t), batch_size=2),
-                        full, rtol=RTOL, atol=ATOL)
+    assert jnp.allclose(eval_grid_flat_aux(pinn, (x, t), batch_size=2), full, rtol=RTOL, atol=ATOL)
     for k in (1, 3):
-        assert jnp.allclose(eval_grid(pinn, (x, t), outer_batch_size=k),
-                            full, rtol=RTOL, atol=ATOL)
+        assert jnp.allclose(eval_grid(pinn, (x, t), outer_batch_size=k), full, rtol=RTOL, atol=ATOL)
 
 
 def test_derivative_through_eval_grid(p2inn, grids):
@@ -242,8 +237,7 @@ def test_derivative_through_eval_grid(p2inn, grids):
     assert jnp.allclose(u_t[l, k, j, i], direct, rtol=RTOL, atol=ATOL)
 
     eps = 1e-6
-    fd = (p2inn(x[i], t[j] + eps, params)
-          - p2inn(x[i], t[j] - eps, params)) / (2 * eps)
+    fd = (p2inn(x[i], t[j] + eps, params) - p2inn(x[i], t[j] - eps, params)) / (2 * eps)
     assert jnp.allclose(u_t[l, k, j, i], fd, rtol=1e-5, atol=1e-7)
 
 
@@ -258,11 +252,12 @@ def test_grad_flows_through_chunked_loss(p2inn, grids):
         def r(x_, t_, aux):
             a_, _ = aux
             return model.D(1)(x_, t_, aux) - a_ * model.D(0, 0)(x_, t_, aux)
+
         return r
 
     def loss(model):  # model is the differentiated argument
         res = eval_grid_flat_aux(heat_residual(model), (x, t), (a, b), batch_size=2)
-        return jnp.mean(res ** 2)
+        return jnp.mean(res**2)
 
     grads = eqx.filter_grad(loss)(p2inn)
     leaves = jax.tree_util.tree_leaves(eqx.filter(grads, eqx.is_array))
