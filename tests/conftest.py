@@ -32,7 +32,7 @@ import equinox as eqx
 
 import pytest
 
-from popinn import PINN, P2INN, DeepONet, ResidualTerm, eval_grid, eval_grid_flat_aux, FixedWeights, Loss
+from popinn import PINN, P2INN, DeepONet, ResidualTerm, eval_grid, FixedWeights, Loss
 
 # Small dims keep everything fast; tests exercise wiring, not capacity.
 NX, NT = 5, 4              # coordinate axis lengths
@@ -129,16 +129,6 @@ def dummy_residual_term(dummy_residual_fn):
         residual_fn = fn,
         metric = 'mse',
         eval_fn = eval_grid
-    )
-
-@pytest.fixture(scope="session")
-def pde_residual_term_flat_aux(pde_residual_fn):
-    fn = pde_residual_fn
-    return ResidualTerm(
-        name = 'pde',
-        residual_fn = fn,
-        metric = 'mse',
-        eval_fn = eval_grid_flat_aux
     )
 
 @pytest.fixture(scope="session")
