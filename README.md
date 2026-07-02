@@ -1,5 +1,5 @@
 
-[![CI-Tests](https://github.com/jaxengodfrey/popinn/actions/workflows/ci.yml/badge.svg)](https://github.com/jaxengodfrey/popinn/actions/workflows/ci.yml)
+[![CI-Tests](https://github.com/jaxengodfrey/popinn/actions/workflows/ci.yaml/badge.svg)](https://github.com/jaxengodfrey/popinn/actions/workflows/ci.yaml)
 [![License](https://img.shields.io/badge/License-MIT-blue)](#license)
 [![Documentation](https://img.shields.io/badge/docs-latest-blue)](https://jaxengodfrey.github.io/popinn/)
 
@@ -36,7 +36,7 @@ It may be necessary to work in 64-bit precision ([Xu, et. al. 2025](https://arxi
 
 ## Quick Example
 
-Below is a brief code example for a parametrized PINN. For more detailed examples, see the [Documentation](https://your-username.github.io/popinn/).
+Below is a brief code example for a parametrized PINN. For more detailed examples, see the [Documentation](https://jaxengodfrey.github.io/popinn/).
 ```python
 import jax.numpy as jnp
 import jax.random as jr
