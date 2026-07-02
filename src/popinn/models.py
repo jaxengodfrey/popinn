@@ -171,7 +171,7 @@ class AbstractDeepONet(AbstractModel):
         """
         h = self.trunk(coords)
         for idx, branch in enumerate(self.branches):
-            h = h * branch(aux_inputs[idx])
+            h = h * branch(jnp.atleast_1d(aux_inputs[idx]))  # is jnp.atleast_1d needed here?
         return jnp.sum(h) + self.bias
 
 

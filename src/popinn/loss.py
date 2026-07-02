@@ -190,8 +190,9 @@ class Loss(eqx.Module):
 
     res_terms: list[ResidualTerm]
     weights: AbstractWeights | None
+    include_weights: bool = True
 
-    def __init__(self, res_terms: list[ResidualTerm], weights: AbstractWeights | None = None):
+    def __init__(self, res_terms: list[ResidualTerm], weights: AbstractWeights | None = None, include_weights: bool = True):
         self.res_terms = res_terms
         keys = [t.name for t in res_terms]
         if len(keys) != len(set(keys)):
@@ -202,7 +203,7 @@ class Loss(eqx.Module):
             raise ValueError(f"weight keys {sorted(weights.values)} do not match term names {sorted(keys)}")
         self.weights = weights
 
-    def __call__(self, model, data) -> tuple[Float[Array, ""], dict]:
+    def __call__(self, model: AbstractModel, data: eqx.Module) -> tuple[Float[Array, ""], dict]:
         """
         Evaluate all terms and return the weighted total plus a dictionary with
         the individual un-weighted loss terms.
@@ -222,4 +223,7 @@ class Loss(eqx.Module):
         for term in self.res_terms:
             residuals[term.name] = term(model, data)
         total = self.weights.combine(residuals)
+        if self.include_weights:
+            for term in self.res_terms:
+                residuals[term.name] = self.weights.values[term.name] * residuals[term.name]
         return total, residuals
