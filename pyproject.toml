@@ -47,3 +47,4 @@ ignore = [
 "**/conftest.py"         = ["E402"]
 "**/deeponet_example.py" = ["E402"]
 "**/test_*.py"           = ["E741"]
+"*.ipynb" = ["E402", "F401"]
