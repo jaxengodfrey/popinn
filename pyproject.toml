@@ -11,14 +11,19 @@ dependencies = [
   "jaxtyping",
   "optax",
   "matplotlib",
+  "jaxopt"
 ]
-
-[project.optional-dependencies]
-lbfgs = ["jaxopt"]          # only needed for train_lbfgs / LBFGSConfig
 
 [dependency-groups]         # PEP 735 — dev tooling, not installed by consumers
 test = ["pytest", "numpy"]
-dev = ["pre-commit", {include-group = "test"}]
+docs = [
+  "mkdocs-material",
+  "mkdocstrings[python]",
+  "mkdocs-jupyter",
+  "ruff",          # lets mkdocstrings format the rendered signatures (the Equinox look)
+  "mkdocs-ipynb>=0.1.1",
+]
+dev = ["pre-commit", {include-group = "test"}, {include-group = "docs"}]
 
 [build-system]
 requires = ["hatchling"]

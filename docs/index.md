@@ -1,10 +1,4 @@
-
-[![CI-Tests](https://github.com/jaxengodfrey/popinn/actions/workflows/ci.yml/badge.svg)](https://github.com/jaxengodfrey/popinn/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/License-MIT-blue)](#license)
-[![Documentation](https://img.shields.io/badge/docs-latest-blue)](https://jaxengodfrey.github.io/popinn/)
-
-
-# `Poppin`
+# Welcome to Popinn
 
 Popinn is a small, composable library for physics-informed deep learning with [JAX](https://github.com/jax-ml/jax/)/[Equinox](https://github.com/patrick-kidger/equinox).
 
@@ -36,7 +30,7 @@ It may be necessary to work in 64-bit precision ([Xu, et. al. 2025](https://arxi
 
 ## Quick Example
 
-Below is a brief code example for a parametrized PINN. For more detailed examples, see the [documentation](https://your-username.github.io/popinn/).
+Below is a brief code example for a parametrized PINN. See [Quick Start](quickstart.md) for details about syntax and more detailed examples.
 ```python
 import jax.numpy as jnp
 import jax.random as jr
@@ -76,3 +70,23 @@ model, history = train_model(
     model, data, loss,
     [AdamConfig(lr=1e-3, num_epochs=1000), LBFGSConfig(num_epochs=1000)],
 )
+```
+
+
+
+
+<!-- ## The one idea everything rests on
+
+Every model, derivative, and residual shares a single signature:
+
+```python
+fn(*coords, aux) -> scalar
+```
+
+Coordinates are passed as individual scalar arguments (`x, t, ...`); auxiliary
+inputs (PDE parameters, sensor-sampled functions, initial conditions) are passed
+as a single trailing tuple. Everything else — batching, differentiation, loss
+composition — is built to operate on functions of this shape.
+
+See the [quick start](quickstart.md) to build and train a model, or the API
+reference for the individual components. -->
