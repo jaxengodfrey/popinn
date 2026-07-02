@@ -1,12 +1,13 @@
 import matplotlib.pyplot as plt
 
+
 def plot_training_history(history: dict, save_path: str = None):
     """Plot training loss curves from the history dict returned by train_model.
 
     Args:
-        history:   Dict mapping component names to lists of scalar values.
+        history (dict):   Dict mapping component names to lists of scalar values.
                    Must contain a ``"total"`` key.
-        save_path: If provided, save the figure to this path.
+        save_path (str): If provided, save the figure to this path.
     """
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 

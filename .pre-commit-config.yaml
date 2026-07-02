@@ -1,0 +1,29 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-shebang-scripts-are-executable
+      - id: detect-private-key
+      - id: check-added-large-files       # guards against committing model.eqx etc.
+        args: [--maxkb=1000]
+      - id: check-toml                     # validates this pyproject.toml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace            # clears the W293 blank-line whitespace in the example
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.20
+    hooks:
+      - id: ruff           # lint + import sort, replaces flake8 + isort
+        args: [--fix]
+      - id: ruff-format    # line-breaks + spacing, replaces black
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: pytest
+        language: system
+        pass_filenames: false   # run the whole suite, not just staged files
+        always_run: true        # run regardless of which files changed
+        stages: [pre-push]      # on push, so commits stay fast

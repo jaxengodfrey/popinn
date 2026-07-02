@@ -1,1 +1,6 @@
 __pycache__/
+*.png
+*.eqx
+*.ipynb
+design_notes.md
+work

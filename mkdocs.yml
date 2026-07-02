@@ -1,0 +1,92 @@
+site_name: Popinn
+site_description: Documentation for the Popinn library.
+site_url: https://jaxengodfrey.github.io/popinn/
+repo_url: https://github.com/jaxengodfrey/popinn
+repo_name: jaxengodfrey/popinn
+edit_uri: ""
+
+theme:
+  name: material
+  font:
+    text: Figtree
+  icon:
+    repo: fontawesome/brands/git-alt
+    logo: fontawesome/solid/frog
+  features:
+    - navigation.sections
+    - toc.integrate
+    - header.autohide
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+  palette:
+    - scheme: default
+      primary: green
+      accent: light green
+      toggle:
+        icon: material/lightbulb
+        name: Switch to dark mode
+    - scheme: slate
+      primary: green
+      accent: lightgreen
+      toggle:
+        icon: material/lightbulb-outline
+        name: Switch to light mode
+
+extra_javascript:
+    # The below two make MathJax work, see https://squidfunk.github.io/mkdocs-material/reference/mathjax/
+    - _static/mathjax.js
+    - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - toc:
+      permalink: "¤"
+      toc_depth: 4
+
+plugins:
+  - search
+  - ipynb
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            force_inspection: false
+            docstring_style: google
+            heading_level: 4
+            inherited_members: true
+            members_order: source
+            show_bases: false
+            show_if_no_docstring: true
+            show_overloads: false
+            show_root_heading: true
+            show_signature_annotations: true
+            show_source: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+
+nav:
+  - Home: index.md
+  - Quick start: quickstart.md
+  - Examples:
+    - examples/pinn.ipynb
+    - examples/parametrized_pinn.ipynb
+    # - examples/deeponet.ipynb
+  - API reference:
+      - Models:
+        - api/models.md
+      - Grid evaluation: api/eval.md
+      - Loss: api/loss.md
+      - Training: api/train.md
+      - Sampling: api/sampling.md
