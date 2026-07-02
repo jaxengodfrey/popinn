@@ -193,6 +193,7 @@ class Loss(eqx.Module):
     include_weights: bool = True
 
     def __init__(self, res_terms: list[ResidualTerm], weights: AbstractWeights | None = None, include_weights: bool = True):
+        self.include_weights = include_weights
         self.res_terms = res_terms
         keys = [t.name for t in res_terms]
         if len(keys) != len(set(keys)):

@@ -140,7 +140,7 @@ def test_fixed_weights_scalar_output(fixed_weights):
 # ──────────────────────────────────────────────────────────────
 
 
-def test_loss_scalar_dict_output(loss, p2inn, training_data, fixed_weights, pde_residual_term):
+def test_loss_scalar_dict_output(loss, p2inn, training_data, fixed_weights, pde_residual_term, dummy_residual_term):
     """Loss should return a tuple where the first element is the scalar
     total loss and the second element is a dictionary with each loss component.
     """
@@ -150,6 +150,13 @@ def test_loss_scalar_dict_output(loss, p2inn, training_data, fixed_weights, pde_
 
     assert jnp.allclose(total, fixed_weights.combine(component_dict), rtol=RTOL, atol=ATOL)
     assert jnp.allclose(component_dict["pde"], pde_residual_term(p2inn, training_data), rtol=RTOL, atol=ATOL)
+
+    new_loss = Loss([pde_residual_term, dummy_residual_term], fixed_weights, include_weights=True)
+    total, component_dict = new_loss(p2inn, training_data)
+    assert total.shape == ()
+    assert set(component_dict.keys()) == set(["pde", "dummy"])
+    assert jnp.allclose(total, component_dict["pde"] + component_dict["dummy"])
+    assert jnp.allclose(component_dict["pde"] / fixed_weights.values["pde"], pde_residual_term(p2inn, training_data), rtol=RTOL, atol=ATOL)
 
 
 def test_loss_initialization(pde_residual_term, dummy_residual_term, fixed_weights):

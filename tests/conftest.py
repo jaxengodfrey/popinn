@@ -141,4 +141,4 @@ def fixed_weights():
 
 @pytest.fixture(scope="session")
 def loss(pde_residual_term, dummy_residual_term, fixed_weights):
-    return Loss([pde_residual_term, dummy_residual_term], fixed_weights)
+    return Loss([pde_residual_term, dummy_residual_term], fixed_weights, include_weights=False)
