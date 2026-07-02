@@ -36,7 +36,7 @@ It may be necessary to work in 64-bit precision ([Xu, et. al. 2025](https://arxi
 
 ## Quick Example
 
-Below is a brief code example for a parametrized PINN. For more detailed examples, see the [documentation](https://your-username.github.io/popinn/).
+Below is a brief code example for a parametrized PINN. For more detailed examples, see the [Documentation](https://your-username.github.io/popinn/).
 ```python
 import jax.numpy as jnp
 import jax.random as jr
