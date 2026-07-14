@@ -1,7 +1,7 @@
 site_name: Popinn
 site_description: Documentation for the Popinn library.
-site_url: https://jaxengodfrey.github.io/popinn/
-repo_url: https://github.com/jaxengodfrey/popinn
+site_url: https://kr-colab.github.io/popinn/
+repo_url: https://github.com/kr-colab/popinn
 repo_name: jaxengodfrey/popinn
 edit_uri: ""
 
@@ -72,9 +72,10 @@ plugins:
             show_overloads: false
             show_root_heading: true
             show_signature_annotations: true
-            show_source: false
+            show_source: True
             show_symbol_type_heading: true
             show_symbol_type_toc: true
+            show_if_no_docstring: false
 
 nav:
   - Home: index.md
@@ -82,10 +83,12 @@ nav:
   - Examples:
     - examples/pinn.ipynb
     - examples/parametrized_pinn.ipynb
-    # - examples/deeponet.ipynb
+    - examples/deeponet.ipynb
   - API reference:
       - Models:
-        - api/models.md
+        - api/models/PINN.md
+        - api/models/P2INN.md
+        - api/models/DeepONet.md
       - Grid evaluation: api/eval.md
       - Loss: api/loss.md
       - Training: api/train.md

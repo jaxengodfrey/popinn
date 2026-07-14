@@ -4,9 +4,9 @@ Popinn is a small, composable library for physics-informed deep learning with [J
 
 Define your problem (coordinates, PDE, boundary/initial conditions, parameters, etc.) using a few standard signatures and easily compose with any of the built-in networks:
 
-- PINNs ([Raissi et al. 2019](https://www.sciencedirect.com/science/article/abs/pii/S0021999118307125))
-- Parametrized PINNs (P$^2$INN)([Cho et al. 2024](https://arxiv.org/abs/2408.09446))
-- Deep Operator Networks ([Lu et al. 2020](https://arxiv.org/abs/1910.03193)).
+- PINN ([Raissi et al. 2019](https://www.sciencedirect.com/science/article/abs/pii/S0021999118307125))
+- Parametrized PINN (P$^2$INN)([Cho et al. 2024](https://arxiv.org/abs/2408.09446))
+- Deep Operator Network ([Lu et al. 2020](https://arxiv.org/abs/1910.03193)).
 
 Built-ins not enough? Easily build your own model by subclassing `popinn.AbstractModel`.
 
@@ -30,7 +30,7 @@ It may be necessary to work in 64-bit precision ([Xu, et. al. 2025](https://arxi
 
 ## Quick Example
 
-Below is a brief code example for a parametrized PINN. See [Quick Start](quickstart.md) for details about syntax and more detailed examples.
+Below is a brief code example for a parametrized PINN. See [Quick Start](quickstart.md) for more detailed examples.
 ```python
 import jax.numpy as jnp
 import jax.random as jr
