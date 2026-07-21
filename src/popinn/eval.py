@@ -122,45 +122,44 @@ def eval_grid(
 def eval_grid_flat_aux(
     fn: Callable,
     coords_1d: tuple[Array, ...],
-    batch_size: int,
     aux: tuple = (),
+    batch_size: int | None = None,
 ) -> Array:
     """Like `eval_grid`, but enumerates the `aux` combinations by integer index and stacks them into an array with
-    shape `(N_combinations, N_aux_elements)`. The computation is then performed on `batch_size` chunks of the combinations.
+     shape `(N_combinations, N_aux_elements)`. The computation is then performed on `batch_size` chunks of the combinations.
 
-    `batch_size` is required, so if you don't intend to utilize the batching scheme, use `eval_grid` instead.
+    If you don't intend to utilize the batching scheme, use `eval_grid` instead.
 
-    Use this when even one full outermost-axis batch in `eval_grid` is too big, or when
-    the aux axes are very uneven (e.g. `Na=2, Nb=10_000`).
+     Use this when even one full outermost-axis batch in `eval_grid` is too big, or when
+     the aux axes are very uneven (e.g. `Na=2, Nb=10_000`).
 
-    Args:
-        fn (Callable): Per-point function with signature `fn(*coords, aux) -> scalar`, where `aux` is a
-            tuple of auxiliary inputs.
-        coords_1d (tuple[Array, ...]): Tuple of 1-D coordinate arrays.
-        batch_size (int): The batch size for `jax.lax.map`.
-        aux (tuple): Tuple of auxiliary components. Each TOP-LEVEL
-            element is one grid axis (its leading axis); trailing dims are the
-            per-call input for that component. Independent top-level elements are
-            crossed:
+     Args:
+         fn (Callable): Per-point function with signature `fn(*coords, aux) -> scalar`, where `aux` is a
+             tuple of auxiliary inputs.
+         coords_1d (tuple[Array, ...]): Tuple of 1-D coordinate arrays.
+         aux (tuple): Tuple of auxiliary components. Each TOP-LEVEL
+             element is one grid axis (its leading axis); trailing dims are the
+             per-call input for that component. Independent top-level elements are
+             crossed:
 
-            ```python
-                aux = (a, b)        # a.shape=(Na,), b.shape=(Nb,) -> Na x Nb grid
-            ```
+             ```python
+                 aux = (a, b)        # a.shape=(Na,), b.shape=(Nb,) -> Na x Nb grid
+             ```
 
-            A top-level element that is itself a tuple is zipped, not
-            crossed: all its leaves share their leading axis. Use this for
-            correlated quantities, e.g. a DeepONet whose initial conditions
-            were generated from PDE parameters (IC[k] from param[k]):
+             A top-level element that is itself a tuple is zipped, not
+             crossed: all its leaves share their leading axis. Use this for
+             correlated quantities, e.g. a DeepONet whose initial conditions
+             were generated from PDE parameters (IC[k] from param[k]):
 
-            ```python
-                # IC.shape = (N_IC, N_IC_PTS), param.shape = (N_IC,)
-                aux = ((IC, param),)   # ONE axis of length N_IC, zipped
-            ```
+             ```python
+                 # IC.shape = (N_IC, N_IC_PTS), param.shape = (N_IC,)
+                 aux = ((IC, param),)   # ONE axis of length N_IC, zipped
+             ```
 
-            so per call the function receives the pair `(IC[k], param[k])`.
-
-    Returns:
-        (Array): Array of shape `(*reversed(aux lens), *reversed(coord lens))`.
+             so per call the function receives the pair `(IC[k], param[k])`.
+         batch_size (int | None): The batch size for `jax.lax.map`.
+     Returns:
+         (Array): Array of shape `(*reversed(aux lens), *reversed(coord lens))`.
     """
     n_c, n_a = len(coords_1d), len(aux)
 

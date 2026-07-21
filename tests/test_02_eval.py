@@ -131,6 +131,7 @@ def test_axis_order_single_point(p2inn, grids):
 def test_joint_chunk_matches_full_vmap(p2inn, grids, batch_size):
     x, t, a, b = grids
     full = eval_grid(p2inn, (x, t), (a, b))
+    print(batch_size)
     flat = eval_grid_flat_aux(p2inn, (x, t), (a, b), batch_size=batch_size)
     assert flat.shape == full.shape
     assert jnp.allclose(flat, full, rtol=RTOL, atol=ATOL)
