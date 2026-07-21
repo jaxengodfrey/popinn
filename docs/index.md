@@ -1,16 +1,17 @@
-# Welcome to Popinn
+# Overview
+## What is Popinn?
 
 Popinn is a small, composable library for physics-informed deep learning with [JAX](https://github.com/jax-ml/jax/)/[Equinox](https://github.com/patrick-kidger/equinox).
 
-Define your problem (coordinates, PDE, boundary/initial conditions, parameters, etc.) using a few standard signatures and easily compose with any of the built-in networks:
+Define your problem (coordinates, PDE, boundary/initial conditions, parameters, etc.) using a few standard signatures and seamlessly compose with any of the built-in networks:
 
 - PINN ([Raissi et al. 2019](https://www.sciencedirect.com/science/article/abs/pii/S0021999118307125))
 - Parametrized PINN (P$^2$INN)([Cho et al. 2024](https://arxiv.org/abs/2408.09446))
 - Deep Operator Network ([Lu et al. 2020](https://arxiv.org/abs/1910.03193)).
 
-Built-ins not enough? Easily build your own model by subclassing `popinn.AbstractModel`.
+Built-ins not enough? Everything in Popinn is designed to be modular: abstract base classes define the minimum contract each object must follow. Construct your own model or other component by subclassing the corresponding abstract base class.
 
-Built on the JAX/Equinox ecosystem, the model, residuals, and loss are end-to-end differentiable and JIT-compiled. The network is evaluated across entire coordinate/parameter grids at once or in batches, allowing the flexibility to trade compute for memory.
+Built on the JAX ecosystem, the model, residuals, and loss are end-to-end differentiable and JIT-compiled.
 
 ## Installation
 Pip installation will be available soon. In the meantime, Popinn can be installed via:
@@ -28,9 +29,14 @@ It may be necessary to work in 64-bit precision ([Xu, et. al. 2025](https://arxi
   jax.config.update("jax_enable_x64", True)
   ```
 
+## Getting Started
+
+If you're new to [physics-informed learning](introduction/physics_informed_learning.md), [Popinn](introduction/anatomy.md), [JAX](introduction/jax_eqx.md), or all three, begin with the [Prerequisites](introduction/index.md). Once you're familiar with those concepts, you'll be ready to tackle the [Examples](examples/index.md) and eventually apply Popinn to your own problem.
+
 ## Quick Example
 
-Below is a brief code example for a parametrized PINN. See [Quick Start](quickstart.md) for more detailed examples.
+Below is a brief code example for a parametrized PINN.
+<!-- See [Introduction](quickstart.md) for more detailed examples. -->
 ```python
 import jax.numpy as jnp
 import jax.random as jr
@@ -71,22 +77,3 @@ model, history = train_model(
     [AdamConfig(lr=1e-3, num_epochs=1000), LBFGSConfig(num_epochs=1000)],
 )
 ```
-
-
-
-
-<!-- ## The one idea everything rests on
-
-Every model, derivative, and residual shares a single signature:
-
-```python
-fn(*coords, aux) -> scalar
-```
-
-Coordinates are passed as individual scalar arguments (`x, t, ...`); auxiliary
-inputs (PDE parameters, sensor-sampled functions, initial conditions) are passed
-as a single trailing tuple. Everything else — batching, differentiation, loss
-composition — is built to operate on functions of this shape.
-
-See the [quick start](quickstart.md) to build and train a model, or the API
-reference for the individual components. -->

@@ -1,6 +1,4 @@
-# Sampling
-
-::: popinn.UniformCollocationSampler
+::: popinn.ResidualTerm
     options:
         members:
             - __init__
