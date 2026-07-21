@@ -1,7 +1,7 @@
 
-[![CI-Tests](https://github.com/jaxengodfrey/popinn/actions/workflows/ci.yaml/badge.svg)](https://github.com/jaxengodfrey/popinn/actions/workflows/ci.yaml)
+[![CI-Tests](https://github.com/kr-colab/popinn/actions/workflows/ci.yaml/badge.svg)](https://github.com/kr-colab/popinn/actions/workflows/ci.yaml)
 [![License](https://img.shields.io/badge/License-MIT-blue)](#license)
-[![Documentation](https://img.shields.io/badge/docs-latest-blue)](https://jaxengodfrey.github.io/popinn/)
+[![Documentation](https://img.shields.io/badge/docs-latest-blue)](https://kr-colab.github.io/popinn/)
 
 
 # `Poppin`
@@ -21,7 +21,7 @@ Built on the JAX/Equinox ecosystem, the model, residuals, and loss are end-to-en
 ## Installation
 Pip installation will be available soon. In the meantime, Popinn can be installed via:
 ```bash
-git clone https://github.com/jaxengodfrey/popinn.git
+git clone https://github.com/kr-colab/popinn.git
 cd popinn
 python -m pip install .
 ```
@@ -36,7 +36,7 @@ It may be necessary to work in 64-bit precision ([Xu, et. al. 2025](https://arxi
 
 ## Quick Example
 
-Below is a brief code example for a parametrized PINN. For more detailed examples, see the [Documentation](https://jaxengodfrey.github.io/popinn/).
+Below is a brief code example for a parametrized PINN. For more detailed examples, see the [Documentation](https://kr-colab.github.io/popinn/).
 ```python
 import jax.numpy as jnp
 import jax.random as jr
