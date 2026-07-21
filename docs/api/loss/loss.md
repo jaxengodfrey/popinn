@@ -1,6 +1,4 @@
-# Sampling
-
-::: popinn.UniformCollocationSampler
+::: popinn.Loss
     options:
         members:
             - __init__

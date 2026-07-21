@@ -26,24 +26,17 @@ from jaxtyping import PRNGKeyArray
 
 
 class AbstractSampler(eqx.Module):
-    """Interface for batch resamplers: key -> batch.
+    """Abstract base class for collocation re-samplers.
 
-    A sampler returns a new training-data container (the same eqx.Module type
-    passed to training) with some fields redrawn from the given PRNG key. It
-    is invoked between optimizer steps in plain Python, so it is not traced;
-    subclasses may still hold array fields (such as a reference batch to copy
-    unchanged fields from) because eqx.Module gives that state a structured,
-    optionally serialisable home.
+    A sampler returns a new data container with some fields redrawn from the given PRNG key.
 
     Subclasses must implement `__call__`. To keep the jitted training step
     from recompiling, a sampler MUST return batches of constant shape across
-    calls (resample values, not sizes).
+    calls.
 
     Note: the trainer calls samplers structurally (`sample_fn(key)`) and does
     not require AbstractSampler specifically -- any callable with the same
-    signature is accepted. Subclass this when you want the contract named and
-    your sampler's configuration introspectable; use a plain closure when you
-    just need a quick one-off resampler.
+    signature is accepted.
     """
 
     @abc.abstractmethod
@@ -55,32 +48,30 @@ class AbstractSampler(eqx.Module):
                 split each resample).
 
         Returns:
-            eqx.Module: a new training-data container with the resampled
+            (equinox.Module): A new data container with the resampled
                 fields replaced and all others carried through unchanged.
         """
         raise NotImplementedError
 
+    # The named `field` is assumed to be a tuple of 1-D coordinate arrays, one
+    # per coordinate axis. Each
+    # axis is independently redrawn uniformly within its bounds; every other
+    # field of the reference batch is carried through unchanged. Each call
+    # constructs a new `equinox.Module` data container.
+
+    # *Fields* :
+    # - `data` (`equinox.Module`): the reference training-data container. Its
+    #     non-resampled fields are reused as-is in every returned batch.
+    #     Held as an array-bearing (non-static) field, so this sampler is
+    #     itself a pytree containing the reference batch.
+    # - `bounds` (`tuple`): one (min, max) pair per coordinate axis of `field`.
+    # - `counts` (`tuple`): points per coordinate axis (static).
+    # - `field` (`str`): name of the coordinate field to resample in `data` (static).
+    # """
+
 
 class UniformCollocationSampler(AbstractSampler):
-    """Resample one coordinate field with uniform random collocation points.
-
-    The named `field` is assumed to be a tuple of 1-D coordinate arrays, one
-    per coordinate axis (the convention eval_grid expects, e.g. (x, t)). Each
-    axis is independently redrawn uniformly within its bounds; every other
-    field of the reference batch -- in particular `aux`, which defines the
-    population of PDE instances -- is carried through unchanged. Each call
-    constructs a new batch (it never mutates the reference), so it is safe
-    with the immutability of eqx.Module fields.
-
-    Fields:
-        data (eqx.Module): the reference training-data container. Its
-            non-resampled fields are reused as-is in every returned batch.
-            Held as an array-bearing (non-static) field, so this sampler is
-            itself a pytree containing the reference batch.
-        bounds (tuple): one (min, max) pair per coordinate axis of `field`.
-        counts (tuple): points per coordinate axis (static).
-        field (str): name of the coordinate field to resample in `data` (static).
-    """
+    """Resample one residual term's collocation points, typically the interior coordinates where the PDE is enforced."""
 
     data: eqx.Module
     bounds: tuple = eqx.field(static=True)
@@ -97,26 +88,23 @@ class UniformCollocationSampler(AbstractSampler):
         """Configure the sampler.
 
         Args:
-            data (eqx.Module): the training-data container to resample from.
-                Captured here, so it only needs to exist when the sampler is
-                constructed -- not at module-import time.
-            bounds (Sequence[tuple[float, float]]): one (min, max) pair per
+            data (eqx.Module): The training data container to resample from.
+            bounds (Sequence[tuple[float, float]]): One (min, max) pair per
                 coordinate axis of `data.<field>`. Its length must equal the
-                number of axes in that field.
-            num_samples (int | Sequence[int] | None): number of collocation
-                points per axis. An int applies to every axis; a sequence
+                number of axes in that field. Example: for `data.pde_coords`
+                with two coordinate axes `x` and `t`, then
+                `bounds = ((xmin,xmax), (tmin,tmax))`.
+            num_samples (int | Sequence[int] | None): Number of collocation
+                points to sample per axis. An int applies to every axis; a sequence
                 gives a per-axis count. None (default) reuses the current
                 per-axis sizes of `data.<field>`. NOTE: if the resolved counts
                 differ from the sizes in the batch first passed to training,
-                the jitted step recompiles on the first resample, so keep them
-                equal unless a recompile is intended.
-            field (str): name of the coordinate field to resample. Defaults to
-                'pde_coords'. Intended for interior collocation fields;
-                pointing it at a boundary field would also resample that
-                field's pinned axis, which is usually not wanted.
+                the jitted step recompiles on the first resample.
+            field (str): Name of the coordinate field to resample. Defaults to
+                'pde_coords', i.e. the interior collocation points.
 
         Raises:
-            ValueError: if `bounds` (or a sequence `num_samples`) does not
+            ValueError: If `bounds` or a sequence `num_samples` does not
                 have one entry per coordinate axis of `data.<field>`.
         """
         coords = getattr(data, field)
@@ -143,11 +131,10 @@ class UniformCollocationSampler(AbstractSampler):
         """Draw a new batch with `field` resampled uniformly.
 
         Args:
-            key (PRNGKeyArray): PRNG key; split into one subkey per axis so
-                the axes are sampled independently.
+            key (PRNGKeyArray): PRNG key.
 
         Returns:
-            eqx.Module: a new batch with `field` redrawn within `bounds` and
+            (eqx.Module): A new batch with `field` uniformly re-sampled within the specified `bounds` and
                 all other fields (including `aux`) unchanged.
         """
         keys = jr.split(key, len(self.counts))

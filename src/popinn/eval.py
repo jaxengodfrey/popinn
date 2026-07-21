@@ -1,51 +1,3 @@
-"""eval.py
-
-Tensor-product evaluation utilities for the per-point models in `models.py`
-(P2INN, DeepONet, and anything else with the signature fn(*coords, aux)).
-
-Conventions
------------
-1. Per-point model signature:  fn(x, t, ..., aux) -> scalar, where `aux` is
-   a TUPLE of auxiliary components (PDE parameters, discretized source
-   functions, initial conditions, ...). Components may be scalars or arrays
-   of any (possibly different) shapes -- JAX treats the tuple as a pytree.
-
-2. Batching: each TOP-LEVEL element of `aux` is one grid axis (its leading
-   axis); everything trailing is the per-call input for that component:
-
-       P2INN:    aux = (a, b),       a.shape = (Na,),    b.shape = (Nb,)     -> per call: scalars
-       DeepONet: aux = (f1, f2),  f1 = (Nf1, Nf1_sen), f2 = (Nf2, Nf2_sen)   -> per call: vectors
-
-3. Because `aux` is a pytree, vmap's `in_axes` can address individual leaves
-   (e.g. in_axes=(None, None, (0, None)) maps leaf 0 of the aux tuple).
-   Each grid axis is one vmap that maps exactly one coordinate argument
-   or one top-level aux element. This unifies product vs. paired batching
-   through aux STRUCTURE: two separate top-level elements are crossed (their
-   tensor product); a single top-level element that is itself a tuple is
-   zipped (all its leaves share one axis). See `eval_grid` for examples.
-
-
-Memory dials
-------------
-Fully vmapping everything materializes activations for the full product of
-all coordinate and aux axis lengths. Two ways to trade compute for memory,
-both jit-compatible and differentiable (the loops are lax.map):
-
-  * `outer_batch_size` in eval_grid: chunk the OUTERMOST grid axis only --
-    axis 0 of aux[-1] when aux is non-empty, otherwise the last coordinate
-    axis (so pure PINNs with aux=() can chunk over a coordinate).
-
-  * eval_grid_flat_aux: enumerate ALL aux combinations by integer index and
-    chunk over them jointly. Peak memory scales with batch_size * coord-grid
-    size, independent of how the combination count factors across axes. Uses
-    jax.lax.map.
-
-All paths return the SAME output layout:
-
-    (*reversed(aux axis lengths), *reversed(coord lengths))
-    e.g. coords = (x, t), aux = (a, b)  ->  (Nb, Na, Nt, Nx)
-"""
-
 from collections.abc import Callable
 
 import jax
@@ -99,49 +51,43 @@ def eval_grid(
     aux: tuple = (),
     outer_batch_size: int | None = None,
 ) -> Array:
-    """Evaluate fn on the tensor product of coordinate and auxiliary axes.
+    """Evaluate `fn` on the cartesian product of coordinate and auxiliary axes.
 
     Args:
-        fn (Callable): per-point function fn(*coords, aux) -> scalar, with `aux` a
-            tuple of components. Works for any function that preserves this
-            signature, including a subclass of popinn.AbstractModel.
-        coords_1d (tuple[Array, ...]): tuple of 1-D coordinate arrays, e.g. (x, t).
-        aux (tuple, default = ()): tuple of auxiliary components. Each TOP-LEVEL
+        fn (Callable): Per-point function with signature `fn(*coords, aux) -> scalar`, with `aux` a
+            tuple of auxiliary inputs.
+        coords_1d (tuple[Array, ...]): Tuple of 1-D coordinate arrays.
+        aux (tuple): Tuple of auxiliary components. Each TOP-LEVEL
             element is one grid axis (its leading axis); trailing dims are the
             per-call input for that component. Independent top-level elements are
-            crossed (their tensor product):
+            crossed:
 
+            ```python
                 aux = (a, b)        # a.shape=(Na,), b.shape=(Nb,) -> Na x Nb grid
+            ```
 
-            A top-level element that is itself a tuple is ZIPPED, not
-            crossed -- all its leaves share one axis. Use this for
+            A top-level element that is itself a tuple is zipped, not
+            crossed: all its leaves share their leading axis. Use this for
             correlated quantities, e.g. a DeepONet whose initial conditions
             were generated from PDE parameters (IC[k] from param[k]):
 
+            ```python
                 # IC.shape = (N_IC, N_IC_PTS), param.shape = (N_IC,)
                 aux = ((IC, param),)   # ONE axis of length N_IC, zipped
+            ```
 
-            so per call the function receives the pair (IC[k], param[k]).
-            Defaults to () for models with no auxiliary inputs (pure PINNs).
-        outer_batch_size (int | None, default = None): if given, the OUTERMOST
-            grid axis is chunked with lax.map instead of vmapped, so only
-            `outer_batch_size` slices of that axis have live activations at once. The
-            outermost axis is axis 0 of aux[-1] when aux is non-empty,
-            and the last coordinate axis (axis 0 of coords_1d[-1]) when
-            aux is empty -- so pure PINNs (aux=()) can chunk over a
-            coordinate. Note that chunking a coordinate shrinks the inner
-            vectorized batch to the product of the REMAINING coordinate
-            axes, so keep the largest coordinate grid innermost (first)
-            to preserve GPU utilization. None -> fully vmapped (fastest,
-            most memory).
+            so per call the function receives the pair `(IC[k], param[k])`.
+        outer_batch_size (int | None): If not `None`, the OUTERMOST
+            grid axis is batched with `jax.lax.map`, which dispatches `jax.vmap`
+            on each batch. The outermost axis is axis 0 of `aux[-1]` when `aux` is non-empty
+            and the last coordinate axis (axis 0 of `coords_1d[-1]`) when
+            `aux` is empty. Note that batching an axis shrinks the inner
+            vectorized batch to the product of the remaining
+            axes, so keep the largest coordinate axis as the first element and the largest
+             `aux` axis as the last element.
 
     Returns:
-        Array of shape (*reversed(aux lens), *reversed(coord lens)).
-        Convention: the LAST axis vmapped becomes the LEADING output axis;
-        axes are wrapped in argument order, so the outermost axis is
-        aux[-1] if present, else coords_1d[-1]. The chunked path matches
-        this layout exactly (lax.map's leading output axis lands where
-        the outermost vmap would have put it).
+        (Array): Array of shape `(*reversed(aux lens), *reversed(coord lens))`.
     """
     n_c, n_a = len(coords_1d), len(aux)
     n_total = n_c + n_a
@@ -179,49 +125,41 @@ def eval_grid_flat_aux(
     aux: tuple = (),
     batch_size: int | None = None,
 ) -> Array:
-    """Like eval_grid, but FLATTENS the outer axis of each `aux` component
-        and, if specified, evaluates `batch_size` chunks.
+    """Like `eval_grid`, but enumerates the `aux` combinations by integer index and stacks them into an array with
+     shape `(N_combinations, N_aux_elements)`. The computation is then performed on `batch_size` chunks of the combinations.
 
-    Use this when even one full outermost-axis chunk is too big, or when
-    the aux axes are very uneven (e.g. Na=2, Nb=10_000). Peak activation
-    memory ~ batch_size * (coord-grid batch).
+    If you don't intend to utilize the batching scheme, use `eval_grid` instead.
 
-    Combinations are enumerated as INTEGER INDEX tuples; the aux data is
-    never meshgridded, so components of any shape work unchanged, and the
-    only materialized overhead is an (N_combos, n_aux) int array.
+     Use this when even one full outermost-axis batch in `eval_grid` is too big, or when
+     the aux axes are very uneven (e.g. `Na=2, Nb=10_000`).
 
-    Args:
-        fn (Callable): per-point function fn(*coords, aux) -> scalar, with `aux` a
-            tuple of components. Works for any function that preserves this
-            signature, including a subclass of popinn.AbstractModel.
-        coords_1d (tuple[Array, ...]): tuple of 1-D coordinate arrays, e.g. (x, t).
-        aux (tuple, default = ()): tuple of auxiliary components. Each TOP-LEVEL element is one
-            grid axis (its leading axis); trailing dims are the per-call
-            input for that component. Independent top-level elements are
-            crossed (their tensor product):
+     Args:
+         fn (Callable): Per-point function with signature `fn(*coords, aux) -> scalar`, where `aux` is a
+             tuple of auxiliary inputs.
+         coords_1d (tuple[Array, ...]): Tuple of 1-D coordinate arrays.
+         aux (tuple): Tuple of auxiliary components. Each TOP-LEVEL
+             element is one grid axis (its leading axis); trailing dims are the
+             per-call input for that component. Independent top-level elements are
+             crossed:
 
-                aux = (a, b)        # a.shape=(Na,), b.shape=(Nb,) -> Na x Nb grid
+             ```python
+                 aux = (a, b)        # a.shape=(Na,), b.shape=(Nb,) -> Na x Nb grid
+             ```
 
-            A top-level element that is itself a tuple is ZIPPED, not
-            crossed -- all its leaves share one axis. Use this for
-            correlated quantities, e.g. a DeepONet whose initial conditions
-            were generated from PDE parameters (IC[k] from param[k]):
+             A top-level element that is itself a tuple is zipped, not
+             crossed: all its leaves share their leading axis. Use this for
+             correlated quantities, e.g. a DeepONet whose initial conditions
+             were generated from PDE parameters (IC[k] from param[k]):
 
-                # IC.shape = (N_IC, N_IC_PTS), param.shape = (N_IC,)
-                aux = ((IC, param),)   # ONE axis of length N_IC, zipped
+             ```python
+                 # IC.shape = (N_IC, N_IC_PTS), param.shape = (N_IC,)
+                 aux = ((IC, param),)   # ONE axis of length N_IC, zipped
+             ```
 
-            so per call the function receives the pair (IC[k], param[k]).
-            Defaults to () for models with no auxiliary inputs (pure PINNs).
-        batch_size (int | None, default = None): If given, the flattened combination
-            axis is chunked so only `batch_size` combinations have live activations
-            at once.
-
-    Returns:
-        Array of shape (*reversed(aux lens), *reversed(coord lens)) --
-        the SAME layout as eval_grid. The flattened combinations are
-        enumerated first-component-major, evaluated via lax.map, then
-        reshaped to (*aux lens, *coord lens) and the aux axes reversed so
-        the last component leads, matching eval_grid's convention.
+             so per call the function receives the pair `(IC[k], param[k])`.
+         batch_size (int | None): The batch size for `jax.lax.map`.
+     Returns:
+         (Array): Array of shape `(*reversed(aux lens), *reversed(coord lens))`.
     """
     n_c, n_a = len(coords_1d), len(aux)
 

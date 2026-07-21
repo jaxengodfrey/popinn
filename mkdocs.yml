@@ -1,8 +1,8 @@
 site_name: Popinn
 site_description: Documentation for the Popinn library.
-site_url: https://jaxengodfrey.github.io/popinn/
-repo_url: https://github.com/jaxengodfrey/popinn
-repo_name: jaxengodfrey/popinn
+site_url: https://kr-colab.github.io/popinn/
+repo_url: https://github.com/kr-colab/popinn
+repo_name: kr-colab/popinn
 edit_uri: ""
 
 theme:
@@ -14,6 +14,7 @@ theme:
     logo: fontawesome/solid/frog
   features:
     - navigation.sections
+    - navigation.indexes
     - toc.integrate
     - header.autohide
     - content.code.copy
@@ -62,7 +63,7 @@ plugins:
         python:
           paths: [src]
           options:
-            force_inspection: false
+            force_inspection: true
             docstring_style: google
             heading_level: 4
             inherited_members: true
@@ -71,22 +72,49 @@ plugins:
             show_if_no_docstring: true
             show_overloads: false
             show_root_heading: true
-            show_signature_annotations: true
-            show_source: false
+            show_signature_annotations: False
+            show_source: true
             show_symbol_type_heading: true
             show_symbol_type_toc: true
+            annotations_path: full
+            filters: ["!^_", "^__call__$"]
+            extensions:
+              - docs_reload.py:FreshImport
+              - docs_reload.py:StaticDefaults
+            # show_if_no_docstring: false
+
+watch:
+  - src
 
 nav:
-  - Home: index.md
-  - Quick start: quickstart.md
-  - Examples:
-    - examples/pinn.ipynb
-    - examples/parametrized_pinn.ipynb
-    # - examples/deeponet.ipynb
+  - index.md
+  - Introduction:
+    - Prerequisites:
+      - Prerequisites: introduction/index.md
+      - 1. Physics-Informed Learning: introduction/physics_informed_learning.md
+      - 2. Anatomy of a Physics-Informed Problem: introduction/anatomy.md
+      - 3. JAX & Equinox Essentials: introduction/jax_eqx.md
+    - Examples:
+      - Examples: examples/index.md
+      - 1. PINN: examples/pinn.ipynb
+      - 2. Parametrized PINN: examples/parametrized_pinn.ipynb
+      - 3. Deep Operator Network: examples/deeponet.ipynb
   - API reference:
       - Models:
-        - api/models.md
+        - api/models/PINN.md
+        - api/models/P2INN.md
+        - api/models/DeepONet.md
       - Grid evaluation: api/eval.md
-      - Loss: api/loss.md
-      - Training: api/train.md
+      - Loss:
+        - Loss: api/loss/loss.md
+        - Weights: api/loss/weights.md
+        - Residuals: api/loss/residual.md
       - Sampling: api/sampling.md
+      - Training:
+        - Adam Optimizer Config: api/train/adam.md
+        - L-BFGS Optimizer Config: api/train/lbfgs.md
+        - Train: api/train/train.md
+      - Abstract:
+        - Abstract Models: api/abstract/abstract_models.md
+        - Abstract Weights: api/abstract/abstract_weights.md
+        - Abstract Sampler: api/abstract/abstract_sampler.md

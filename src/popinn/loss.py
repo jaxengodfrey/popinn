@@ -40,37 +40,8 @@ def _reduce(values: Array, metric: str | Callable) -> Float[Array, ""]:
 
 class ResidualTerm(eqx.Module):
     """
-    Module for computing a grid of residual values and computing a loss term
-    given a metric.
-
-    All fields are static (compile-time constants), so a ResidualTerm holds
-    no array data and is safe to embed in a jitted Loss. This term's
-    coordinates are read from the runtime `data` object at call time as the
-    attribute `<name>_coords`, so the same term works for any resampled data
-    of matching shapes.
-
-    __init__ args:
-        name (str): Name of the loss term. Should match the coords name in
-            the data module: the term reads its coordinates from
-            `data.<name>_coords`, and `name` is also this term's key in the
-            residual / weight dictionaries.
-        residual_fn (Callable): function with the signature
-            residual_fn(model) -> Callable, where the returned function is
-            the per-point residual function and has the signature
-            r(*coords, aux) -> Scalar.
-        metric (str | Callable, default: 'mse'): metric to compute the loss.
-            Can be 'mse' for mean-squared-err, 'mae' for mean-absolute-error,
-            or a custom Callable mapping a grid of values to a scalar.
-        eval_fn (eval_grid | eval_grid_flat_aux, default: eval_grid):
-            function that evaluates the model over the grid of coordinates
-            and auxiliary inputs. Can be `eval_grid` (nested vmap; chunks the
-            outermost axis via `outer_batch_size`) or `eval_grid_flat_aux`
-            (chunks over all parameter combinations jointly via `batch_size`).
-        batch_size (int | None, default: None): the size of chunks for the
-            memory dial. When set, it is forwarded to eval_fn under the
-            correct keyword: `outer_batch_size` for eval_grid, `batch_size`
-            otherwise. None evaluates the whole grid at once (fastest, most
-            memory).
+    Module for evaluating a residual function over a grid of coordinate and auxiliary values,
+    then reducing the residual grid to a scalar value with a specified metric.
     """
 
     name: str = eqx.field(static=True)
@@ -81,20 +52,19 @@ class ResidualTerm(eqx.Module):
 
     def __call__(self, model: AbstractModel, data: eqx.Module) -> Float[Array, ""]:
         """
-        Evaluate the residual over this term's grid and reduce to a scalar.
+        Evaluate the residual over this term's coordinate and auxiliary grid and reduce to a scalar.
 
-        Coordinates are read from `data.<name>_coords` and the auxiliary
-        inputs from `data.aux`; the per-point residual `residual_fn(model)`
-        is batched over them by `eval_fn` and reduced by `metric`.
+        Coordinates are read from `data.<name>_coords` (where `<name>` is the
+        `name` specified at initialization) and the auxiliary
+        inputs from `data.aux`.
 
         Args:
-            model (AbstractModel): the model the residual is built around.
-            data (eqx.Module): runtime data container exposing this term's
-                coordinates as `<name>_coords` and the auxiliary inputs as
-                `aux`.
+            model (AbstractModel): The network model.
+            data (equinox.Module): data container with field carrying the 1D coordinate
+            grid axes in `<name>_coords` and the auxiliary inputs in `aux`.
 
         Returns:
-            Float[Array, '']: the scalar loss for this term.
+            (Float[Array, '']): the scalar loss for this term.
         """
         coords = getattr(data, self.name + "_coords")
         aux = data.aux
@@ -106,20 +76,39 @@ class ResidualTerm(eqx.Module):
         return _reduce(values, self.metric)
 
 
+ResidualTerm.__init__.__doc__ = """.
+
+
+Args:
+    name (str): Name of the term. Should match the name of a coordinate field in the `data`
+        container as `data.<name>_coords`.
+    residual_fn (Callable): Function with the signature
+        `residual_fn(model) -> Callable`, where the returned function is
+        the per-point residual function and has the signature
+        `r(*coords, aux) -> Scalar`.
+    metric (str | Callable): Metric to compute the loss.
+        Can be 'mse' for mean-squared-err, 'mae' for mean-absolute-error,
+        or a custom Callable mapping a grid of values to a scalar.
+    eval_fn (eval_grid | eval_grid_flat_aux):
+        Function that evaluates the model over a grid of coordinates
+        and auxiliary inputs. Can be `eval_grid` or `eval_grid_flat_aux`.
+    batch_size (int | None): The batch sizes for the
+        memory dial in `eval_fn`. Setting to `None` evaluates the whole grid at once (fastest, most
+        memory).
+"""
+
+
 class AbstractWeights(eqx.Module):
     """
     Abstract base class for per-term loss weighting schemes.
 
-    Subclasses store the weighting parameters in `values` and implement
-    `combine`, which folds the per-term scalar losses into the weighted
-    total. Keeping this abstract leaves room for trainable schemes (e.g.
-    learned-uncertainty or softmax-normalized weights) alongside the
-    fixed-weight default without changing the Loss interface.
+    Subclasses store the weighting parameters in `values` and implement the
+    `combine` method, which folds the per-term scalar residuals into the total weighted loss.
 
-    Fields:
-        values (dict): the weighting data, keyed by term name. Whether these
-            are static constants or trainable leaves is decided by the
-            concrete subclass.
+    **Fields**:
+
+    - `values` (`dict`): the weights, keyed by the set of corresponding `ResidualTerm.name` strings. Whether the
+        weights are static constants or trainable leaves is decided by the concrete subclass.
     """
 
     values: eqx.AbstractVar[dict]
@@ -127,14 +116,14 @@ class AbstractWeights(eqx.Module):
     @abc.abstractmethod
     def combine(self, residuals: dict) -> Float[Array, ""]:
         """
-        Combine per-term scalar losses into the weighted total.
+        Combine per-term scalar residuals into the weighted total.
 
         Args:
-            residuals (dict): mapping from term name to that term's scalar
-                loss.
+            residuals (dict): A mapping from each `ResidualTerm.name` to that term's scalar
+                value.
 
         Returns:
-            Float[Array, '']: the weighted total loss.
+            (Float[Array, '']): The total weighted loss.
         """
         raise NotImplementedError
 
@@ -143,13 +132,9 @@ class FixedWeights(AbstractWeights):
     """
     Static (non-trainable) per-term loss weights.
 
-    `values` is a static field, so the weights are excluded from
-    differentiation automatically and incur no trace-time cost. To change
-    them, construct a new FixedWeights rather than mutating in place.
+    **Fields**:
 
-    Fields:
-        values (dict): mapping from term name to its scalar weight. Keys
-            must cover exactly the term names in the Loss.
+    - `values` (`dict`): Mapping from term name to its scalar weight, keyed by the set of corresponding `ResidualTerm.name` strings.
     """
 
     values: dict = eqx.field(static=True)
@@ -159,40 +144,34 @@ class FixedWeights(AbstractWeights):
         Combine per-term scalar losses into the weighted sum.
 
         Args:
-            residuals (dict): mapping from term name to that term's scalar
-                loss, as returned by each ResidualTerm.
+            residuals (dict): A mapping from each `ResidualTerm.name` to that term's scalar
+                value.
 
         Returns:
-            Float[Array, '']: the weighted sum over all loss terms.
+            (Float[Array, '']): The weighted sum over all loss terms.
         """
         return sum(self.values[k] * residuals[k] for k in self.values.keys())
 
 
 class Loss(eqx.Module):
     """
-    Composite physics-informed loss assembled from a collection of ResidualTerms.
+    Composite physics-informed loss assembled from a list of initialized `ResidualTerm` objects and a specified weighting scheme.
 
-    Calling the initialized Loss evaluates every term against the model and data and
-    returns (total, residuals), where `total` is the weighted sum and
-    `residuals` is the per-term breakdown -- a shape suited to
-    eqx.filter_value_and_grad(loss, has_aux=True)(model, data).
-
-    __init__ args:
-        res_terms (list[ResidualTerm]): the terms to evaluate. Each term's
-            `name` is its key in the residual / weight dictionaries and
-            selects its coordinates on the data module (`<name>_coords`).
-            Names must be unique.
-        weights (AbstractWeights | None, default: None): a weighting object
-            whose `values` keys match the term names and which exposes
-            `combine(residuals) -> scalar`. When None, defaults to
-            FixedWeights with weight 1.0 for every term.
     """
 
     res_terms: list[ResidualTerm]
-    weights: AbstractWeights | None
+    weights: AbstractWeights | None = None
     include_weights: bool = True
 
     def __init__(self, res_terms: list[ResidualTerm], weights: AbstractWeights | None = None, include_weights: bool = True):
+        """.
+
+        Args:
+            res_terms (list[ResidualTerm]): A list of initialized `ResidualTerm` objects. The `name` fields of each `ResidualTerm` must be unique.
+            weights (AbstractWeights | None): A weighting object whose `values` keys match the names of the `ResidualTerm` objects passed to `res_terms`. When `None`, defaults to `FixedWeights` with a weight equal to 1.0 for every term.
+            include_weights (bool): If `True`, the individual loss terms in the dictionary returned by `__call__` will be scaled by their weights.
+                If `False`, the weights will not be included.
+        """
         self.include_weights = include_weights
         self.res_terms = res_terms
         keys = [t.name for t in res_terms]
@@ -207,17 +186,17 @@ class Loss(eqx.Module):
     def __call__(self, model: AbstractModel, data: eqx.Module) -> tuple[Float[Array, ""], dict]:
         """
         Evaluate all terms and return the weighted total plus a dictionary with
-        the individual un-weighted loss terms.
+        the individual loss terms (weighted or un-weighted determined by `include_weights` kwarg specified at initialization).
 
         Args:
-            model (AbstractModel): the model the residuals are built around.
-            data (eqx.Module): runtime data container; each term reads its
+            model (AbstractModel): The network model called in the per-point residual functions.
+            data (eqx.Module): Data container; each `ResidualTerm` reads its
                 coordinates as `data.<name>_coords` and the shared auxiliary
                 inputs as `data.aux`.
 
         Returns:
-            tuple[Float[Array, ''], dict]: the scalar weighted total loss
-                and a dict mapping each term name to its un-weighted scalar
+            (tuple[Float[Array, ''], dict]): The scalar weighted total loss
+                and a dict mapping each term name to its (weighted or un-weighted) scalar
                 loss.
         """
         residuals = {}

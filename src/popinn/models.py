@@ -11,19 +11,11 @@ from jaxtyping import Array, Float
 
 
 class AbstractModel(eqx.Module):
-    """Base class for all models, defining the per-point evaluation API.
+    """Abstract base class for all models.
 
-    A model maps a single point -- coordinates plus optional auxiliary
-    inputs -- to a scalar. Coordinates are passed as individual scalar
-    arguments; auxiliary inputs (PDE parameters, discretized functions,
-    initial conditions, ...) are passed as a single trailing tuple. This
-    per-point, scalar-output contract is what lets `D` take clean per-
-    coordinate derivatives and lets the eval_grid utilities batch the model
-    over arbitrary coordinate / parameter grids.
+    The `__call__` and `D` (derivative) methods are concrete and should not be overridden by subclasses.
 
-    Subclasses implement `_eval(coords, aux_inputs)`, where `coords` is the
-    stacked coordinate array and `aux_inputs` is the (possibly empty) aux
-    tuple.
+    Subclasses must implement the abstract hook `_eval(coords, aux_inputs)`, which `__call__` dispatches to.
     """
 
     @abc.abstractmethod
@@ -32,17 +24,19 @@ class AbstractModel(eqx.Module):
         coords: Float[Array, "num_coords"],
         aux_inputs: tuple,
     ) -> Float[Array, ""]:
-        """Evaluate the model at one point.
+        """Abstract method.
+
+        Evaluates the model at one grid point.
 
         Args:
-            coords (Float[Array, 'num_coords']): stacked coordinate array,
-                one entry per coordinate axis (e.g. [x, t]).
-            aux_inputs (tuple): auxiliary inputs for this point (PDE
-                parameters, sensor-sampled functions, ...). Empty for models
-                with no auxiliary inputs.
+            coords (Float[Array, 'num_coords']): Stacked coordinate array,
+                one entry per coordinate axis (e.g. `jnp.array([x, t])`).
+            aux_inputs (tuple): Auxiliary inputs (e.g. PDE
+                parameters, sensor-sampled functions, etc.). Empty for models
+                with no auxiliary inputs (PINN).
 
         Returns:
-            Float[Array, '']: scalar model output at the point.
+            (Float[Array, '']): The model output as a scalar JAX array.
         """
         raise NotImplementedError
 
@@ -50,24 +44,25 @@ class AbstractModel(eqx.Module):
         """Evaluate the model at one point.
 
         Coordinates are passed as individual scalars; auxiliary inputs are
-        passed as a single trailing TUPLE. The aux tuple may be omitted for
-        models with no auxiliary inputs -- since coordinates are scalars and
-        aux is by convention always a tuple, the trailing argument's type
-        disambiguates:
+        passed as a single trailing *tuple*:
 
-            model(x, t, (a, b))   # parametrized
+            model(x, t, (a, b))   # x & t are the coordinates; a & b are the auxiliary inputs.
+
+        For models with no auxiliary inputs, e.g. `popinn.PINN`, the auxiliary tuple
+        can be empty, or omitted completely:
+
             model(x, t, ())       # explicit empty aux -- equivalent to:
-            model(x, t)           # pure PINN
+            model(x, t)           # no aux
 
-        Note `aux` must be a tuple specifically (not a list or array) for
-        this dispatch and for eval_grid's per-leaf vmapping.
+        Note the auxiliary inputs *must be a tuple* specifically, not a list
+        or array.
 
         Args:
-            *args: the coordinate scalars, optionally followed by the aux
+            *args: The coordinate scalars, optionally followed by the aux
                 tuple.
 
         Returns:
-            Float[Array, '']: scalar model output at the point.
+            (Float[Array, '']): The model output as a scalar JAX array.
         """
         if args and isinstance(args[-1], tuple):
             *coords, aux_inputs = args
@@ -76,27 +71,30 @@ class AbstractModel(eqx.Module):
         return self._eval(jnp.stack(coords), aux_inputs)
 
     def D(self, *argnums):
-        """Build the derivative of the model w.r.t. one or more coordinates.
+        """Build the derivative of the model with respect to one or more coordinates.
 
         Returns a function with the same call signature as the model whose
-        output is the requested derivative. Each entry of `argnums` indexes
-        a coordinate argument (0 -> first coordinate, 1 -> second, ...);
-        chaining differentiates repeatedly, so D(0, 0) is the second
-        derivative w.r.t. coordinate 0.
+        output is the requested derivative.
 
-        Ex:
-            u_x  = model.D(0)(x, t, params)      # d/dx
-            u_xx = model.D(0, 0)(x, t, params)   # d2/dx2
-            u_t  = model.D(1)(x, t, params)      # d/dt
+        !!! Example "Derivative syntax"
+            Each entry of `argnums` indexes a coordinate argument (`0` -> first coordinate, `1` -> second, ...);
+            chaining differentiates repeatedly. For example, for a model with two coordinates `x` & `t`,
+            derivatives are taken & evaluated like:
+            ```python
+                du_dx  = model.D(0)(x, t, aux)         # du/dx
+                d2u_dx2 = model.D(0, 0)(x, t, aux)     # d2/dx2
+                du_dt  = model.D(1)(x, t, aux)         # d/dt
+
+
+            ```
 
         Args:
-            *argnums (int): coordinate indices to differentiate with respect
+            *argnums (int): Coordinate indices to differentiate with respect
                 to, applied left to right.
 
         Returns:
-            Callable: a function (same signature as the model) returning the
-                requested scalar derivative. Differentiation is per
-                coordinate; do not pass the aux-tuple index here.
+            (Callable): A function with the same signature as the model that returns the
+                requested scalar derivative.
         """
         f = self.__call__
         for a in argnums:
@@ -110,11 +108,11 @@ class AbstractModel(eqx.Module):
 
 
 class AbstractP2INN(AbstractModel):
-    """Parameterized Physics-Informed Neural Network (abstract).
+    """Abstract Parameterized Physics-Informed Neural Network.
 
     Composes a parameter encoder, a coordinate encoder, and a manifold
-    network: the parameters and coordinates are encoded separately, their
-    embeddings concatenated, and the manifold network maps the result to a
+    network: the coordinates and parameters are encoded separately, their
+    embeddings concatenated, and the manifold network maps to a
     scalar. Subclasses must provide the three sub-networks as fields.
     """
 
@@ -123,19 +121,16 @@ class AbstractP2INN(AbstractModel):
     manifold: eqx.AbstractVar[eqx.nn.MLP]
 
     def _eval(self, coords: Float[Array, "num_coords"], aux_inputs: tuple) -> Float[Array, ""]:
-        """Encode parameters and coordinates separately, then combine.
+        """Concatenate coordinate and parameter embeddings, then pass through manifold network.
 
         Args:
-            coords (Float[Array, 'num_coords']): stacked coordinate array,
-                shape (num_coords,).
-            aux_inputs (tuple): tuple of scalar PDE parameters, stacked
-                internally into a shape-(num_params,) array for the encoder.
+            coords (Float[Array, 'num_coords']): Array of coordinate values, one coordinate per axis, e.g. `jnp.array([x,t])` for scalars `x` and `t`.
+            aux_inputs (tuple): Tuple of scalar PDE parameters, e.g. `(a,b)` for scalar values `a` and `b`.
 
         Returns:
-            Float[Array, '']: scalar solution estimate.
+            (Float[Array, '']): The model output as a scalar JAX array.
         """
-        # aux_inputs is a tuple of scalar parameters; stack into an array
-        # for the encoder, same trick __call__ uses for the coordinates.
+
         h_param = self.param_encoder(jnp.stack(aux_inputs))
         h_coord = self.coord_encoder(coords)
         h_concat = jnp.concatenate([h_param, h_coord])
@@ -143,10 +138,10 @@ class AbstractP2INN(AbstractModel):
 
 
 class AbstractDeepONet(AbstractModel):
-    """Deep Operator Network (abstract).
+    """Abstract Deep Operator Network.
 
     Evaluates a sum over a product of branch and trunk embeddings: the trunk
-    encodes the coordinates, each branch encodes one auxiliary input (a
+    encodes the coordinates, each branch encodes one auxiliary input (e.g., a
     sensor-sampled function), and their elementwise product is summed and
     offset by a bias. Subclasses must provide the branch list, trunk, and
     bias as fields.
@@ -157,21 +152,20 @@ class AbstractDeepONet(AbstractModel):
     bias: eqx.AbstractVar[Array]
 
     def _eval(self, coords: Float[Array, "num_coords"], aux_inputs: tuple) -> Float[Array, ""]:
-        """Combine trunk (coordinate) and branch (function) embeddings.
+        """Sum element-wise product of trunk (coordinate) and branch (auxiliary) embeddings and add bias.
 
         Args:
-            coords (Float[Array, 'num_coords']): stacked coordinate array,
+            coords (Float[Array, 'num_coords']): Stacked coordinate array,
                 shape (num_coords,), fed to the trunk.
-            aux_inputs (tuple): one sensor-sampled function per branch;
-                aux_inputs[i] is fed to branches[i]. Indexing works whether
-                aux_inputs is a tuple of arrays or a grouped pytree.
+            aux_inputs (tuple): Tuple containing arrays (sensor-sampled function) and/or scalars (PDE parameters).
+                Each top level element of the tuple is mapped to its own branch network.
 
         Returns:
-            Float[Array, '']: scalar operator output at the point.
+            (Float[Array, '']): The model output as a scalar JAX array.
         """
         h = self.trunk(coords)
         for idx, branch in enumerate(self.branches):
-            h = h * branch(jnp.atleast_1d(aux_inputs[idx]))  # is jnp.atleast_1d needed here?
+            h = h * branch(jnp.atleast_1d(aux_inputs[idx]))
         return jnp.sum(h) + self.bias
 
 
@@ -181,12 +175,11 @@ class AbstractDeepONet(AbstractModel):
 
 
 class PINN(AbstractModel):
-    """Standard Physics-Informed Neural Network (no auxiliary inputs).
+    """Physics-Informed Neural Network.
 
-    A single MLP mapping coordinates to a scalar. Since it has no auxiliary
-    inputs, call it as model(x, t) (or model(x, t, ()) explicitly); the aux
-    tuple is accepted and ignored for API consistency with the parametrized
-    models.
+    A single MLP mapping coordinates to a scalar, with no auxiliary inputs.
+
+    See [Raissi et al. (2019)](https://www.sciencedirect.com/science/article/pii/S0021999118307125) for more details on PINNs.
     """
 
     mlp: eqx.nn.MLP
@@ -201,18 +194,17 @@ class PINN(AbstractModel):
         final_activation: Callable = jax.nn.softplus,
         mlp_kwargs: dict = {},
     ):
-        """Build the PINN.
+        """Initialize the PINN as a multi-layer perceptron using `equinox.nn.MLP`.
 
         Args:
             key (jr.PRNGKey): PRNG key for MLP initialization.
-            num_coords (int): number of coordinate inputs (e.g. 2 for (x, t)).
-            hidden_dim (int): width of each hidden layer.
-            depth (int): number of hidden layers.
-            inner_activation (Callable): activation between hidden layers.
-            final_activation (Callable): activation on the output. The default softplus
-            keeps the solution positive; override for sign-changing solutions.
-            mlp_kwargs (dict): extra keyword arguments forwarded to
-                eqx.nn.MLP.
+            num_coords (int): Number of coordinate inputs (e.g. 2 for x & t).
+            hidden_dim (int): Width of each hidden layer.
+            depth (int): Number of hidden layers.
+            inner_activation (Callable): Activation between hidden layers.
+            final_activation (Callable): Activation on the output.
+            mlp_kwargs (dict): Extra keyword arguments forwarded to
+                `equinox.nn.MLP`.
         """
         self.mlp = eqx.nn.MLP(
             in_size=num_coords,
@@ -246,17 +238,40 @@ class PINN(AbstractModel):
 class P2INN(AbstractP2INN):
     """Parametrized Physics-Informed Neural Network.
 
-    Concrete AbstractP2INN with explicit parameter/coordinate encoders and a
-    manifold network. Set num_params and num_coords to match the problem.
+    Consists of 3 MLPs: a coordinate encoder, parameter encoder, and
+    manifold network. The outputs of the two encoders are stacked together
+    and then passed into the manifold network, which returns the scalar
+    model output.
 
-    Usage:
-        # one parameter gamma, coordinates (x, t)
-        model = P2INN(key, num_params=1, num_coords=2)
-        u = model(x, t, (gamma,))
+    The parameters can be scalar PDE parameters, e.g. the scalar parameters
+    $\\beta$, $\\nu$, and $\\rho$ in this PDE:
 
-        # two parameters, coordinates (x, y, t)
-        model = P2INN(key, num_params=2, num_coords=3)
-        u = model(x, y, t, (gamma, beta))
+    $$
+    \\frac{\\partial u}{\\partial t} + \\beta \\frac{\\partial u}{\\partial x} - \\nu \\frac{\\partial^2 u}{\\partial x^2} - \\rho u (1 - u) = 0
+    $$
+
+    Example usage:
+
+    ```python
+    import jax.numpy as jnp
+    import popinn
+
+    beta = jnp.array(1.)
+    nu = jnp.array(2.)
+    rho = jnp.array(3.)
+
+    x = jnp.array(1.)
+    t = jnp.array(1.)
+
+    # initialize
+    model = popinn.P2INN(num_params = 3, num_coords = 2)
+
+    # evaluate
+    u = model(x, t, (beta, nu, rho))
+    ```
+
+    See [Cho et al. (2024)](https://arxiv.org/abs/2408.09446) for more details
+    about P$^2$INNs.
     """
 
     param_encoder: eqx.nn.MLP
@@ -282,13 +297,13 @@ class P2INN(AbstractP2INN):
         coord_kwargs: dict = {},
         manifold_kwargs: dict = {},
     ):
-        """Build the three sub-networks.
+        """Initialize the three sub-networks: coordinate encoder, parameter encoder, and manifold network,
+        each as an `equinox.nn.MLP`.
 
         Args:
             key (jr.PRNGKey): PRNG key; split three ways for the encoders and
                 manifold.
-            num_params (int): number of scalar PDE parameters (param-encoder
-                input size).
+            num_params (int): Number of scalar PDE parameters; defines the input dimension of the parameter encoder.
             num_coords (int): number of coordinate inputs (coord-encoder
                 input size).
             param_hidden_dim (int): width and output size of the parameter
@@ -358,12 +373,62 @@ class P2INN(AbstractP2INN):
 
 
 class DeepONet(AbstractDeepONet):
-    """Deep Operator Network with one branch per auxiliary function.
+    """Deep Operator Network consisting of a single trunk network and a branch network for each auxiliary input.
+    The trunk and branch networks are all `equinox.nn.MLP`.
 
-    Concrete AbstractDeepONet. Each entry of branch_input_dim adds a branch
-    MLP whose input size is that entry's sensor count; the trunk takes the
-    coordinates. Call as model(x, t, (f1, f2, ...)) where f_i is the i-th
-    branch's sensor-sampled function and matches branches[i]'s input size.
+    The final model output is constructed by taking the sum over an element-wise product between the
+    trunk $tr(\\vec{x})$ and branch $br_j(\\vec{\\mu_j})$ outputs, plus a learnable bias $b$. For example,
+    for two branches, the output is:
+
+    $$
+    \\sum_i \\Big[br_{1, i}(\\vec{\\mu}_1) * br_{2, i}(\\vec{\\mu}_2) * tr_i(\\vec{x})\\Big] + b
+    $$
+
+    The trunk and branch outputs must therefore all be the same dimension, which is specified
+    by `branch_trunk_output_dim` on initialization.
+
+    The auxiliary inputs are functions evaluated at a fixed set of sensor points, e.g. the
+    forcing term $F(t)$ in the PDE:
+
+    $$
+    \\frac{\\partial u}{\\partial t} + \\beta \\frac{\\partial u}{\\partial x} - \\nu \\frac{\\partial^2 u}{\\partial x^2} - \\rho u (1 - u) = F(t)
+    $$
+
+    and the initial condition $u_0(x)$ that may depend on $\\beta$, $\\nu$, and $\\rho$.
+
+    Example usage:
+
+    ```python
+    import jax.numpy as jnp
+    import popinn
+
+    beta = jnp.array(1.)
+    nu = jnp.array(2.)
+    rho = jnp.array(3.)
+
+    ts = jnp.linspace(0,1,10)
+    F_t = # some function that depends t
+    F_t_vals = F_t(ts)
+
+    xs = jnp.linspace(0,1,10)
+    u_0 = # some function that depends on x and may depend on beta, nu, and/or rho
+    u_0_vals = u_0(xs)
+
+    x = jnp.array(1.)
+    t = jnp.array(1.)
+
+    # initialize
+    model = popinn.DeepONet(
+                branch_input_dim = (xs.shape[0], ts.shape[0]),
+                trunk_input_dim = 2,
+                branch_depth = (5, 5)
+            )
+
+    # evaluate
+    u = model(x, t, (u_0_vals, F_t_vals))
+    ```
+
+    See [Lu et al. (2020)](https://arxiv.org/abs/1910.03193) for more details on DeepONets.
     """
 
     branches: list[eqx.nn.MLP]
@@ -378,31 +443,30 @@ class DeepONet(AbstractDeepONet):
         branch_trunk_output_dim: int = 100,
         branch_depth: tuple = (5,),
         trunk_depth: int = 3,
-        branch_kwargs: dict = {"activation": jnp.tanh},
-        trunk_kwargs: dict = {"activation": jnp.tanh},
+        branch_kwargs: dict = {"activation": jnp.tanh, "final_activation": jnp.tanh},
+        trunk_kwargs: dict = {"activation": jnp.tanh, "final_activation": jnp.tanh},
+        bias_min: float = -1.0,
+        bias_max: float = 1.0,
     ):
         """Build the branch networks, trunk, and bias.
 
         Args:
-            key (jr.PRNGKey): PRNG key; consumed iteratively to initialize
-                each branch, the trunk, and the bias.
-            branch_input_dim (tuple[int]): sensor count for each branch; its
-                length is the number of branches (and the expected length of
-                the aux tuple at call time).
-            trunk_input_dim (int): number of coordinate inputs to the trunk.
-            branch_trunk_output_dim (int): shared embedding width; the output
-                size (and hidden width) of every branch and the trunk, so
-                their embeddings can be multiplied elementwise.
-            branch_depth (tuple): number of hidden layers per branch; one
+            key (jr.PRNGKey): PRNG key.
+            branch_input_dim (tuple[int]): Tuple containing the sensor count for each
+                branch.
+            trunk_input_dim (int): Number of coordinate inputs to the trunk.
+            branch_trunk_output_dim (int): The shared hidden and output width
+                of the trunk and branch networks.
+            branch_depth (tuple): Number of hidden layers per branch; one
                 entry per branch (indexed alongside branch_input_dim).
-            trunk_depth (int): number of hidden layers in the trunk.
-            branch_kwargs (dict): extra kwargs forwarded to every branch MLP.
-            trunk_kwargs (dict): extra kwargs forwarded to the trunk MLP.
+            trunk_depth (int): Number of hidden layers in the trunk.
+            branch_kwargs (dict): Extra kwargs forwarded to every branch MLP.
+            trunk_kwargs (dict): Extra kwargs forwarded to the trunk MLP.
         """
 
         key, trunk_key, bias_key = jr.split(key, 3)
 
-        self.bias = jr.uniform(bias_key, minval=-1.0, maxval=1.0)
+        self.bias = jr.uniform(bias_key, minval=bias_min, maxval=bias_max)
 
         self.trunk = eqx.nn.MLP(
             in_size=trunk_input_dim,
@@ -416,8 +480,6 @@ class DeepONet(AbstractDeepONet):
         self.branches = []
         branch_keys = jr.split(key, len(branch_input_dim))
         for idx in range(len(branch_input_dim)):
-            # Re-derive a fresh key each iteration (keep the first split half,
-            # discard the second) so branches initialize independently.
             self.branches.append(
                 eqx.nn.MLP(
                     in_size=branch_input_dim[idx],
